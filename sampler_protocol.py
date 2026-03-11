@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol
+from typing import Any
 
 import torch
 
@@ -19,26 +19,11 @@ class SamplerConfig:
 
 
 @dataclass(slots=True)
-class SamplerContext:
-    split: str
-    save_trace: bool = False
-    trace_stride: int = 1
-    artifact_dir: Optional[str] = None
-
-
-@dataclass(slots=True)
 class SamplerOutput:
     images: torch.Tensor
     nfe_used: int
-    trace: Optional[dict[str, torch.Tensor]]
+    trace: dict[str, torch.Tensor] | None
     aux: dict[str, Any]
-
-
-class BaseSampler(Protocol):
-    name: str
-
-    def sample(self, adapter: Any, z: torch.Tensor, cfg: SamplerConfig) -> SamplerOutput:
-        ...
 
 
 def _terminal_sigma(device: torch.device | str, *, dtype: torch.dtype) -> torch.Tensor:
@@ -68,26 +53,6 @@ def build_polynomial_sigmas(
     if terminal_zero:
         sigmas = torch.cat([sigmas, _terminal_sigma(device, dtype=dtype)])
     return sigmas
-
-
-def build_karras_schedule(
-    nfe: int,
-    sigma_min: float,
-    sigma_max: float,
-    device: torch.device | str,
-    rho: float = 7.0,
-) -> torch.Tensor:
-    return build_polynomial_sigmas(
-        num_steps=nfe,
-        sigma_min=sigma_min,
-        sigma_max=sigma_max,
-        device=device,
-        rho=rho,
-        dtype=torch.float32,
-        terminal_zero=True,
-    )
-
-
 def edm_num_steps_for_euler(nfe: int) -> int:
     if nfe < 1:
         raise ValueError("EDM Euler requires at least 1 NFE.")

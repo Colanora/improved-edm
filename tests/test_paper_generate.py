@@ -8,11 +8,7 @@ from pathlib import Path
 import pytest
 import torch
 
-from model_adapter import EDMAdapter
-from sample import ResearchSampler
-from sampler_protocol import SamplerConfig, latent_batch_from_seeds
-from samplers.euler import EulerSampler
-from samplers.heun import HeunSampler
+from paper_generate import sample_images_for_paper
 from tests.fakes import ToyEDMNet
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -25,7 +21,7 @@ def _load_upstream_generate():
     upstream_root = str(UPSTREAM_GENERATE.parent)
     if upstream_root not in sys.path:
         sys.path.insert(0, upstream_root)
-    spec = importlib.util.spec_from_file_location("upstream_edm_generate", UPSTREAM_GENERATE)
+    spec = importlib.util.spec_from_file_location("upstream_edm_generate_paper", UPSTREAM_GENERATE)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Unable to load {UPSTREAM_GENERATE}")
     module = importlib.util.module_from_spec(spec)
@@ -34,43 +30,44 @@ def _load_upstream_generate():
 
 
 @pytest.mark.parametrize(
-    ("sampler_cls", "nfe"),
+    ("sampler_name", "num_steps"),
     [
-        (EulerSampler, 5),
-        (EulerSampler, 9),
-        (HeunSampler, 5),
-        (HeunSampler, 9),
-        (ResearchSampler, 5),
-        (ResearchSampler, 9),
+        ("euler", 5),
+        ("heun", 3),
+        ("research", 3),
     ],
 )
-def test_sampler_matches_upstream_edm(tmp_path, sampler_cls, nfe) -> None:
+def test_paper_sampler_matches_upstream(tmp_path, sampler_name: str, num_steps: int) -> None:
     upstream = _load_upstream_generate()
     checkpoint = tmp_path / "toy.pkl"
     net = ToyEDMNet().eval()
     with checkpoint.open("wb") as handle:
         pickle.dump({"ema": net}, handle)
 
-    latents = latent_batch_from_seeds([0, 1], (3, 32, 32), device="cpu", dtype=torch.float32)
-    adapter = EDMAdapter(str(checkpoint), device="cpu")
-    cfg = SamplerConfig(
-        nfe=nfe,
-        sigma_min=adapter.sigma_min(),
-        sigma_max=adapter.sigma_max(),
-        seed=0,
-        device="cpu",
-        batch_size=latents.shape[0],
-        image_shape=adapter.image_shape(),
+    latents = torch.randn(2, 3, 32, 32)
+    local = sample_images_for_paper(
+        sampler=sampler_name,
+        net=net,
+        latents=latents,
+        class_labels=None,
+        randn_like=torch.randn_like,
+        num_steps=num_steps,
+        sigma_min=0.002,
+        sigma_max=80.0,
+        rho=7,
+        S_churn=0,
+        S_min=0,
+        S_max=float("inf"),
+        S_noise=1,
     )
-    local = sampler_cls().sample(adapter, latents, cfg)
 
-    if sampler_cls is EulerSampler:
+    if sampler_name == "euler":
         reference = upstream.ablation_sampler(
             net=net,
             latents=latents,
-            num_steps=nfe,
-            sigma_min=adapter.sigma_min(),
-            sigma_max=adapter.sigma_max(),
+            num_steps=num_steps,
+            sigma_min=0.002,
+            sigma_max=80.0,
             rho=7,
             solver="euler",
             discretization="edm",
@@ -82,13 +79,11 @@ def test_sampler_matches_upstream_edm(tmp_path, sampler_cls, nfe) -> None:
         reference = upstream.edm_sampler(
             net=net,
             latents=latents,
-            num_steps=(nfe + 1) // 2,
-            sigma_min=adapter.sigma_min(),
-            sigma_max=adapter.sigma_max(),
+            num_steps=num_steps,
+            sigma_min=0.002,
+            sigma_max=80.0,
             rho=7,
             S_churn=0,
         )
 
-    expected = reference.clamp(-1.0, 1.0).to(torch.float32)
-    assert local.nfe_used == nfe
-    assert torch.equal(local.images, expected)
+    assert torch.equal(local, reference)

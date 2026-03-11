@@ -21,7 +21,8 @@ ASSETS_DIR = REPO_ROOT / "assets"
 ARTIFACTS_DIR = REPO_ROOT / "artifacts"
 RESULTS_PATH = REPO_ROOT / "results.tsv"
 MANIFEST_PATH = ASSETS_DIR / "manifest.yaml"
-DEFAULT_CHECKPOINT = ASSETS_DIR / "checkpoints" / "edm-cifar10-32x32-uncond-vp.pkl"
+PAPER_GENERATE_PATH = REPO_ROOT / "paper_generate.py"
+UPSTREAM_FID_PATH = REPO_ROOT / "third_party" / "upstream-edm" / "fid.py"
 
 DIRECTORIES = (
     ASSETS_DIR / "checkpoints",
@@ -167,6 +168,8 @@ def runtime_report() -> dict[str, Any]:
         "cuda_device_count": torch.cuda.device_count() if cuda_available else 0,
         "uv_index_url": os.environ.get("UV_INDEX_URL", ""),
         "hf_endpoint": os.environ.get("HF_ENDPOINT", ""),
+        "paper_generate_exists": PAPER_GENERATE_PATH.exists(),
+        "upstream_fid_exists": UPSTREAM_FID_PATH.exists(),
     }
 
 
@@ -238,6 +241,17 @@ def verify_assets(check_only: bool) -> list[str]:
     return messages
 
 
+def verify_repo_runtime() -> list[str]:
+    checks = [
+        (PAPER_GENERATE_PATH.exists(), f"paper_generate: {'present' if PAPER_GENERATE_PATH.exists() else 'missing'}"),
+        (UPSTREAM_FID_PATH.exists(), f"upstream_fid: {'present' if UPSTREAM_FID_PATH.exists() else 'missing'}"),
+    ]
+    failures = [message for ok, message in checks if not ok]
+    if failures:
+        raise RuntimeError("\n".join(failures))
+    return [message for _ok, message in checks]
+
+
 def main() -> int:
     args = parse_args()
     ensure_directories()
@@ -250,6 +264,7 @@ def main() -> int:
 
     try:
         messages = verify_assets(check_only=args.check)
+        messages.extend(verify_repo_runtime())
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1

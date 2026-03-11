@@ -10,14 +10,18 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
 UPSTREAM_ROOT = REPO_ROOT / "third_party" / "upstream-edm"
+PAPER_GENERATE_PATH = REPO_ROOT / "paper_generate.py"
 PAPER_RESULTS_PATH = REPO_ROOT / "paper_results.tsv"
 DEFAULT_REF_URL = "https://nvlabs-fi-cdn.nvidia.com/edm/fid-refs/cifar10-32x32.npz"
 DEFAULT_TARGETS = {
     "cond": "https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-vp.pkl",
     "uncond": "https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-uncond-vp.pkl",
 }
-RESULTS_HEADER = (
+LEGACY_RESULTS_HEADER = (
     "commit\ttarget\tsteps\tgpus\tseed_block_0\tseed_block_1\tseed_block_2\tfid_min\truntime_s\tcheckpoint\tref\n"
+)
+RESULTS_HEADER = (
+    "commit\tsampler\ttarget\tsteps\tgpus\tseed_block_0\tseed_block_1\tseed_block_2\tfid_min\truntime_s\tcheckpoint\tref\n"
 )
 
 
@@ -34,8 +38,9 @@ class SeedBlock:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run a paper-comparable EDM evaluation via the official upstream scripts.")
+    parser = argparse.ArgumentParser(description="Run a paper-comparable EDM evaluation via the local paper generator and upstream FID.")
     parser.add_argument("--target", choices=sorted(DEFAULT_TARGETS), required=True)
+    parser.add_argument("--sampler", choices=("heun", "euler", "research"), default="research")
     parser.add_argument("--steps", type=int, default=18, help="Official EDM paper setting uses 18 steps.")
     parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs for torch.distributed.run.")
     parser.add_argument("--batch-size", type=int, default=64, help="Per-process batch size passed to upstream scripts.")
@@ -95,7 +100,7 @@ def build_generate_command(
     *,
     python_executable: str,
     gpus: int,
-    upstream_root: Path,
+    sampler: str,
     outdir: Path,
     block: SeedBlock,
     checkpoint: str,
@@ -103,12 +108,14 @@ def build_generate_command(
     batch_size: int,
 ) -> list[str]:
     return distributed_prefix(python_executable, gpus) + [
-        str(upstream_root / "generate.py"),
+        str(PAPER_GENERATE_PATH),
         "--outdir",
         str(outdir),
         "--seeds",
         block.as_cli_value(),
         "--subdirs",
+        "--sampler",
+        sampler,
         "--steps",
         str(steps),
         "--batch",
@@ -158,18 +165,53 @@ def parse_fid(stdout: str) -> float:
 
 
 def ensure_upstream_repo() -> None:
-    if not (UPSTREAM_ROOT / "generate.py").exists() or not (UPSTREAM_ROOT / "fid.py").exists():
+    if not PAPER_GENERATE_PATH.exists():
+        raise FileNotFoundError(f"Local paper generator not found at {PAPER_GENERATE_PATH}")
+    if not (UPSTREAM_ROOT / "fid.py").exists():
         raise FileNotFoundError(f"Upstream EDM repo not found at {UPSTREAM_ROOT}")
 
 
 def ensure_results_file() -> None:
     if not PAPER_RESULTS_PATH.exists():
         PAPER_RESULTS_PATH.write_text(RESULTS_HEADER, encoding="utf-8")
+        return
+
+    lines = PAPER_RESULTS_PATH.read_text(encoding="utf-8").splitlines()
+    if not lines:
+        PAPER_RESULTS_PATH.write_text(RESULTS_HEADER, encoding="utf-8")
+        return
+
+    header = lines[0] + "\n"
+    if header == RESULTS_HEADER:
+        return
+    if header != LEGACY_RESULTS_HEADER:
+        raise ValueError(f"Unexpected paper_results.tsv header: {header.rstrip()}")
+
+    migrated = [RESULTS_HEADER]
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        if len(parts) != 11:
+            raise ValueError(f"Unexpected legacy paper_results.tsv row: {line}")
+        parts.insert(1, "heun")
+        migrated.append("\t".join(parts) + "\n")
+    PAPER_RESULTS_PATH.write_text("".join(migrated), encoding="utf-8")
+
+
+def validate_sampler_target(*, sampler: str, target: str) -> None:
+    if sampler != "research":
+        return
+    from sample import research_supports_target
+
+    if not research_supports_target(target):
+        raise ValueError(f"Sampler {sampler} is not enabled for target {target}.")
 
 
 def append_result_row(
     *,
     commit: str,
+    sampler: str,
     target: str,
     steps: int,
     gpus: int,
@@ -181,6 +223,7 @@ def append_result_row(
     ensure_results_file()
     row = [
         commit,
+        sampler,
         target,
         str(steps),
         str(gpus),
@@ -197,10 +240,11 @@ def append_result_row(
 def main() -> int:
     args = parse_args()
     ensure_upstream_repo()
+    validate_sampler_target(sampler=args.sampler, target=args.target)
     if args.repeats != 3:
         raise ValueError("paper_eval.py currently records the official 3-run protocol only.")
     checkpoint = args.checkpoint or DEFAULT_TARGETS[args.target]
-    output_root = Path(args.outdir) / args.target / f"steps_{args.steps}"
+    output_root = Path(args.outdir) / args.sampler / args.target / f"steps_{args.steps}"
     output_root.mkdir(parents=True, exist_ok=True)
     blocks = seed_blocks(seed_start=args.seed_start, repeats=args.repeats, block_size=args.block_size)
     block_fids: list[float] = []
@@ -211,7 +255,7 @@ def main() -> int:
         generate_command = build_generate_command(
             python_executable=args.python,
             gpus=args.gpus,
-            upstream_root=UPSTREAM_ROOT,
+            sampler=args.sampler,
             outdir=block_dir,
             block=block,
             checkpoint=checkpoint,
@@ -243,6 +287,7 @@ def main() -> int:
     runtime_s = time.perf_counter() - start
     append_result_row(
         commit=current_commit(),
+        sampler=args.sampler,
         target=args.target,
         steps=args.steps,
         gpus=args.gpus,
@@ -251,6 +296,7 @@ def main() -> int:
         checkpoint=checkpoint,
         ref=args.ref,
     )
+    print(f"sampler: {args.sampler}")
     print(f"target: {args.target}")
     print(f"steps: {args.steps}")
     for index, fid in enumerate(block_fids):

@@ -7,9 +7,13 @@ from sample import ResearchSampler
 from sampler_protocol import SamplerConfig
 from samplers.euler import EulerSampler
 from samplers.heun import HeunSampler
+from tests.fakes import ToyEDMNet
 
 
 class FakeAdapter:
+    def __init__(self) -> None:
+        self.net = ToyEDMNet().eval()
+
     def sigma_min(self) -> float:
         return 0.002
 
@@ -23,9 +27,7 @@ class FakeAdapter:
         return sigma.clamp_min(self.sigma_min())
 
     def denoise(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
-        while sigma.ndim < x.ndim:
-            sigma = sigma.view(*sigma.shape, 1)
-        return x / (1.0 + sigma)
+        return self.net(x, sigma)
 
     def velocity(self, x: torch.Tensor, sigma: torch.Tensor) -> torch.Tensor:
         while sigma.ndim < x.ndim:

@@ -3,13 +3,12 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import numpy as np
 import torch
 from torchvision.utils import make_grid, save_image
 
-from third_party.edm.minimal_fid import compute_feature_stats, extract_features, frechet_distance
+from third_party.edm.minimal_fid import extract_features, frechet_distance
 
 FRONTIER_WEIGHTS = {5: 0.35, 9: 0.30, 11: 0.20, 13: 0.15}
 SPLIT_SIZES = {"proxy": 5_000, "confirm": 10_000, "final": 50_000}
@@ -73,19 +72,3 @@ def save_preview_grid(images: torch.Tensor, destination: Path, max_images: int =
 def write_diagnostics(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-
-def stats_from_batches(batches: Iterable[torch.Tensor]) -> tuple[np.ndarray, np.ndarray]:
-    accumulator: FeatureAccumulator | None = None
-    for batch in batches:
-        features = extract_features(batch)
-        if accumulator is None:
-            accumulator = FeatureAccumulator(feature_dim=features.shape[1])
-        accumulator.update(batch)
-    if accumulator is None:
-        raise ValueError("No batches were provided.")
-    return accumulator.finalize()
-
-
-def compute_feature_backend(images: torch.Tensor) -> dict[str, int]:
-    return compute_feature_stats(images)

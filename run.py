@@ -264,7 +264,7 @@ def main() -> int:
             sampler=args.sampler,
             split=args.split,
             frontier_score=0.0,
-            fid_by_nfe={5: 0.0, 8: 0.0, 10: 0.0, 12: 0.0},
+            fid_by_nfe={5: 0.0, 9: 0.0, 11: 0.0, 13: 0.0},
             peak_vram_mb=0.0,
             status="crash",
             notes=f"{args.notes} {exc}".strip(),

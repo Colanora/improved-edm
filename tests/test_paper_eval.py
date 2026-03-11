@@ -2,13 +2,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+import paper_eval
 from paper_eval import (
+    LEGACY_RESULTS_HEADER,
+    RESULTS_HEADER,
     SeedBlock,
     build_fid_command,
     build_generate_command,
     distributed_prefix,
+    ensure_results_file,
     parse_fid,
     seed_blocks,
+    validate_sampler_target,
 )
 
 
@@ -30,20 +37,22 @@ def test_build_generate_command_matches_upstream_cli() -> None:
     command = build_generate_command(
         python_executable="python3",
         gpus=1,
-        upstream_root=Path("/tmp/upstream"),
+        sampler="research",
         outdir=Path("/tmp/out"),
         block=SeedBlock(start=0, end=49_999),
         checkpoint="https://example.com/model.pkl",
         steps=18,
         batch_size=64,
     )
-    assert command[-12:] == [
-        "/tmp/upstream/generate.py",
+    assert command[-14:] == [
+        str(paper_eval.PAPER_GENERATE_PATH),
         "--outdir",
         "/tmp/out",
         "--seeds",
         "0-49999",
         "--subdirs",
+        "--sampler",
+        "research",
         "--steps",
         "18",
         "--batch",
@@ -80,3 +89,21 @@ def test_build_fid_command_matches_upstream_cli() -> None:
 def test_parse_fid_reads_last_numeric_line() -> None:
     stdout = "Loading dataset reference statistics...\nCalculating FID...\n1.79\n"
     assert parse_fid(stdout) == 1.79
+
+
+def test_ensure_results_file_migrates_legacy_rows(tmp_path, monkeypatch) -> None:
+    results_path = tmp_path / "paper_results.tsv"
+    results_path.write_text(
+        LEGACY_RESULTS_HEADER + "abc123\tuncond\t18\t1\t1.8\t1.7\t1.9\t1.7\t12.3\tcheckpoint\tref\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(paper_eval, "PAPER_RESULTS_PATH", results_path)
+    ensure_results_file()
+    rows = results_path.read_text(encoding="utf-8").splitlines()
+    assert rows[0] == RESULTS_HEADER.rstrip("\n")
+    assert rows[1].split("\t")[1] == "heun"
+
+
+def test_validate_sampler_target_rejects_conditional_research() -> None:
+    with pytest.raises(ValueError, match="not enabled"):
+        validate_sampler_target(sampler="research", target="cond")
