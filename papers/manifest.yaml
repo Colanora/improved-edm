@@ -1,0 +1,10 @@
+- id: karras2022_edm
+  title: Elucidating the Design Space of Diffusion-Based Generative Models
+  paper_url: https://arxiv.org/abs/2206.00364
+  code_url: https://github.com/NVlabs/edm
+  kind: canonical_model_and_sampler
+  training_free: true
+  fits_protocol: true
+  status: implemented_verified
+  module: samplers/euler.py, samplers/heun.py
+  notes_file: papers/notes/karras2022_edm.md

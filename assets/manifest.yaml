@@ -1,0 +1,11 @@
+checkpoint:
+  filename: edm-cifar10-32x32-uncond-vp.pkl
+  sha256: ""
+  primary_url: https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-uncond-vp.pkl
+  mirror_repo: your-org/sampler-autoresearch-assets
+
+fid_ref:
+  filename: cifar10-32x32.npz
+  sha256: ""
+  primary_url: https://nvlabs-fi-cdn.nvidia.com/edm/fid-refs/cifar10-32x32.npz
+  mirror_repo: your-org/sampler-autoresearch-assets
