@@ -70,10 +70,10 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
 
 
 def research_directional_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
-    delta = (d_cur - prev_d_cur).flatten(1)
     d_flat = d_cur.flatten(1)
-    numerator = (d_flat * delta).sum(dim=1)
-    denominator = d_flat.norm(dim=1) * delta.norm(dim=1)
+    prev_flat = prev_d_cur.flatten(1)
+    numerator = (d_flat * prev_flat).sum(dim=1)
+    denominator = d_flat.norm(dim=1) * prev_flat.norm(dim=1)
     return (numerator / denominator.clamp_min(1e-12)).clamp(0.0, 1.0)
 
 
