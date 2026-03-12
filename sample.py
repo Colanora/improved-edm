@@ -69,14 +69,6 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
     return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
 
 
-def research_directional_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
-    delta = (d_cur - prev_d_cur).flatten(1)
-    d_flat = d_cur.flatten(1)
-    numerator = (d_flat * delta).sum(dim=1)
-    denominator = d_flat.norm(dim=1) * delta.norm(dim=1)
-    return (numerator / denominator.clamp_min(1e-12)).clamp(0.0, 1.0)
-
-
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
     step_fraction = research_step_fractions(num_steps, device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
@@ -133,9 +125,7 @@ def research_sampler(
 
         predictor_d = d_cur
         if prev_d_cur is not None:
-            gate = research_directional_gate(d_cur, prev_d_cur)
-            gain = (step_predictor_mix[i] * gate).view(-1, *([1] * (d_cur.ndim - 1)))
-            predictor_d = d_cur + gain * (d_cur - prev_d_cur)
+            predictor_d = d_cur + step_predictor_mix[i] * (d_cur - prev_d_cur)
         alpha = step_alpha[i]
         x_prime = x_hat + alpha * h * predictor_d
         t_prime = t_hat + alpha * h
