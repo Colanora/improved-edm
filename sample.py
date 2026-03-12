@@ -66,7 +66,7 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
         return torch.zeros_like(step_fraction)
     late_mix = ((step_fraction - RESEARCH_STANDARD_PREDICTOR_START) / (1.0 - RESEARCH_STANDARD_PREDICTOR_START)).clamp(0.0, 1.0)
-    return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
+    return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix.square()
 
 
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
