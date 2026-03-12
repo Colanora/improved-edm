@@ -11,6 +11,8 @@ RESEARCH_STANDARD_RHO = 6.5
 RESEARCH_STANDARD_STEP_THRESHOLD = 12
 RESEARCH_STANDARD_STEP_PIVOT = 0.55
 RESEARCH_STANDARD_SIGMA_PIVOT = 0.48
+RESEARCH_STANDARD_BLEND_START = 0.7
+RESEARCH_STANDARD_MAX_BLEND = 0.12
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -57,6 +59,14 @@ def research_t_steps(
     return torch.cat([round_sigma(t_steps), torch.zeros(1, dtype=torch.float64, device=device)])
 
 
+def research_step_blends(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_fraction = torch.linspace(0.0, 1.0, num_steps, dtype=torch.float64, device=device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return torch.zeros_like(step_fraction)
+    late_mix = ((step_fraction - RESEARCH_STANDARD_BLEND_START) / (1.0 - RESEARCH_STANDARD_BLEND_START)).clamp(0.0, 1.0)
+    return RESEARCH_STANDARD_MAX_BLEND * late_mix
+
+
 def research_sampler(
     net,
     latents,
@@ -82,6 +92,7 @@ def research_sampler(
         device=latents.device,
         round_sigma=net.round_sigma,
     )
+    step_blends = research_step_blends(num_steps, latents.device)
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -95,16 +106,18 @@ def research_sampler(
         denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
         d_cur = (x_hat - denoised) / t_hat
         h = t_next - t_hat
+        x_euler = x_hat + h * d_cur
 
         if i == num_steps - 1:
-            x_next = x_hat + h * d_cur
+            x_next = x_euler
             continue
 
         x_prime = x_hat + RESEARCH_ALPHA * h * d_cur
         t_prime = t_hat + RESEARCH_ALPHA * h
         denoised = net(x_prime, t_prime, class_labels).to(torch.float64)
         d_prime = (x_prime - denoised) / t_prime
-        x_next = x_hat + h * ((1 - 0.5 / RESEARCH_ALPHA) * d_cur + 0.5 / RESEARCH_ALPHA * d_prime)
+        x_heun = x_hat + h * ((1 - 0.5 / RESEARCH_ALPHA) * d_cur + 0.5 / RESEARCH_ALPHA * d_prime)
+        x_next = x_heun + step_blends[i] * (x_euler - x_heun)
 
     return x_next
 
