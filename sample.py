@@ -137,7 +137,7 @@ def research_sampler(
         alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
         if prev_d_cur is not None:
             gate = research_directional_gate(d_cur, prev_d_cur)
-            alpha_flat = RESEARCH_ALPHA + gate.sqrt() * (step_alpha[i] - RESEARCH_ALPHA)
+            alpha_flat = RESEARCH_ALPHA + gate * (step_alpha[i] - RESEARCH_ALPHA)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
         t_prime_input = t_hat + alpha_flat * h
