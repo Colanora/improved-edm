@@ -11,9 +11,8 @@ RESEARCH_STANDARD_RHO = 6.5
 RESEARCH_STANDARD_STEP_THRESHOLD = 12
 RESEARCH_STANDARD_STEP_PIVOT = 0.55
 RESEARCH_STANDARD_SIGMA_PIVOT = 0.48
-RESEARCH_STANDARD_ADAPTIVE_START = 0.7
-RESEARCH_STANDARD_MAX_BLEND = 0.16
-RESEARCH_STANDARD_ERROR_SCALE = 0.3
+RESEARCH_STANDARD_PREDICTOR_START = 0.45
+RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -60,11 +59,12 @@ def research_t_steps(
     return torch.cat([round_sigma(t_steps), torch.zeros(1, dtype=torch.float64, device=device)])
 
 
-def research_step_late_mix(num_steps: int, device: torch.device) -> torch.Tensor:
+def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.Tensor:
     step_fraction = torch.linspace(0.0, 1.0, num_steps, dtype=torch.float64, device=device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
         return torch.zeros_like(step_fraction)
-    return ((step_fraction - RESEARCH_STANDARD_ADAPTIVE_START) / (1.0 - RESEARCH_STANDARD_ADAPTIVE_START)).clamp(0.0, 1.0)
+    late_mix = ((step_fraction - RESEARCH_STANDARD_PREDICTOR_START) / (1.0 - RESEARCH_STANDARD_PREDICTOR_START)).clamp(0.0, 1.0)
+    return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
 
 
 def research_sampler(
@@ -92,7 +92,8 @@ def research_sampler(
         device=latents.device,
         round_sigma=net.round_sigma,
     )
-    step_late_mix = research_step_late_mix(num_steps, latents.device)
+    step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
+    prev_d_cur = None
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -106,24 +107,20 @@ def research_sampler(
         denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
         d_cur = (x_hat - denoised) / t_hat
         h = t_next - t_hat
-        x_euler = x_hat + h * d_cur
 
         if i == num_steps - 1:
-            x_next = x_euler
+            x_next = x_hat + h * d_cur
             continue
 
-        x_prime = x_hat + RESEARCH_ALPHA * h * d_cur
+        predictor_d = d_cur
+        if prev_d_cur is not None:
+            predictor_d = d_cur + step_predictor_mix[i] * (d_cur - prev_d_cur)
+        x_prime = x_hat + RESEARCH_ALPHA * h * predictor_d
         t_prime = t_hat + RESEARCH_ALPHA * h
         denoised = net(x_prime, t_prime, class_labels).to(torch.float64)
         d_prime = (x_prime - denoised) / t_prime
-        x_heun = x_hat + h * ((1 - 0.5 / RESEARCH_ALPHA) * d_cur + 0.5 / RESEARCH_ALPHA * d_prime)
-
-        error_rms = (d_prime - d_cur).square().mean(dim=tuple(range(1, d_cur.ndim))).sqrt()
-        signal_rms = d_cur.square().mean(dim=tuple(range(1, d_cur.ndim))).sqrt().clamp_min(1e-12)
-        error_ratio = error_rms / signal_rms
-        blend = step_late_mix[i] * RESEARCH_STANDARD_MAX_BLEND * error_ratio / (error_ratio + RESEARCH_STANDARD_ERROR_SCALE)
-        blend = blend.view(-1, *([1] * (x_heun.ndim - 1)))
-        x_next = x_heun + blend * (x_euler - x_heun)
+        x_next = x_hat + h * ((1 - 0.5 / RESEARCH_ALPHA) * d_cur + 0.5 / RESEARCH_ALPHA * d_prime)
+        prev_d_cur = d_cur.detach()
 
     return x_next
 
