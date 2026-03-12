@@ -20,10 +20,15 @@ def write_ref_stats(path, images: torch.Tensor) -> None:
 
 def test_prepare_manifest_fallback() -> None:
     text = """
-checkpoint:
+checkpoint_uncond:
   filename: edm.pkl
   sha256: ""
   primary_url: https://example.com/edm.pkl
+  mirror_repo: your-org/assets
+checkpoint_cond:
+  filename: edm-cond.pkl
+  sha256: ""
+  primary_url: https://example.com/edm-cond.pkl
   mirror_repo: your-org/assets
 fid_ref:
   filename: cifar10.npz
@@ -32,7 +37,8 @@ fid_ref:
   mirror_repo: your-org/assets
 """.strip()
     parsed = prepare._load_manifest_fallback(text)
-    assert parsed["checkpoint"]["filename"] == "edm.pkl"
+    assert parsed["checkpoint_uncond"]["filename"] == "edm.pkl"
+    assert parsed["checkpoint_cond"]["filename"] == "edm-cond.pkl"
     assert parsed["fid_ref"]["primary_url"].endswith("cifar10.npz")
 
 

@@ -12,8 +12,13 @@ REPO_ROOT = Path(__file__).resolve().parent
 UPSTREAM_ROOT = REPO_ROOT / "third_party" / "upstream-edm"
 PAPER_GENERATE_PATH = REPO_ROOT / "paper_generate.py"
 PAPER_RESULTS_PATH = REPO_ROOT / "paper_results.tsv"
-DEFAULT_REF_URL = "https://nvlabs-fi-cdn.nvidia.com/edm/fid-refs/cifar10-32x32.npz"
-DEFAULT_TARGETS = {
+LOCAL_REF_PATH = REPO_ROOT / "assets" / "fid_refs" / "cifar10-32x32.npz"
+REMOTE_REF_URL = "https://nvlabs-fi-cdn.nvidia.com/edm/fid-refs/cifar10-32x32.npz"
+LOCAL_TARGETS = {
+    "cond": REPO_ROOT / "assets" / "checkpoints" / "edm-cifar10-32x32-cond-vp.pkl",
+    "uncond": REPO_ROOT / "assets" / "checkpoints" / "edm-cifar10-32x32-uncond-vp.pkl",
+}
+REMOTE_TARGETS = {
     "cond": "https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-cond-vp.pkl",
     "uncond": "https://nvlabs-fi-cdn.nvidia.com/edm/pretrained/edm-cifar10-32x32-uncond-vp.pkl",
 }
@@ -39,7 +44,7 @@ class SeedBlock:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a paper-comparable EDM evaluation via the local paper generator and upstream FID.")
-    parser.add_argument("--target", choices=sorted(DEFAULT_TARGETS), required=True)
+    parser.add_argument("--target", choices=sorted(REMOTE_TARGETS), required=True)
     parser.add_argument("--sampler", choices=("heun", "euler", "research"), default="research")
     parser.add_argument("--steps", type=int, default=18, help="Official EDM paper setting uses 18 steps.")
     parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs for torch.distributed.run.")
@@ -47,8 +52,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repeats", type=int, default=3, help="Number of 50K seed blocks. Paper protocol uses 3.")
     parser.add_argument("--block-size", type=int, default=50_000, help="Images per seed block. Paper protocol uses 50000.")
     parser.add_argument("--seed-start", type=int, default=0, help="First seed for the first block.")
-    parser.add_argument("--checkpoint", default="", help="Override the default checkpoint URL or local path.")
-    parser.add_argument("--ref", default=DEFAULT_REF_URL, help="Override the reference stats URL or local path.")
+    parser.add_argument("--checkpoint", default="", help="Override the default checkpoint path or URL.")
+    parser.add_argument("--ref", default="", help="Override the default reference stats path or URL.")
     parser.add_argument(
         "--outdir",
         default=str(REPO_ROOT / "artifacts" / "paper_eval"),
@@ -94,6 +99,19 @@ def distributed_prefix(python_executable: str, gpus: int) -> list[str]:
         "--nproc_per_node",
         str(gpus),
     ]
+
+
+def default_checkpoint_for_target(target: str) -> str:
+    local_path = LOCAL_TARGETS[target]
+    if local_path.exists():
+        return str(local_path)
+    return REMOTE_TARGETS[target]
+
+
+def default_ref() -> str:
+    if LOCAL_REF_PATH.exists():
+        return str(LOCAL_REF_PATH)
+    return REMOTE_REF_URL
 
 
 def build_generate_command(
@@ -167,7 +185,7 @@ def parse_fid(stdout: str) -> float:
 def ensure_upstream_repo() -> None:
     if not PAPER_GENERATE_PATH.exists():
         raise FileNotFoundError(f"Local paper generator not found at {PAPER_GENERATE_PATH}")
-    if not (UPSTREAM_ROOT / "fid.py").exists():
+    if not (UPSTREAM_ROOT / "fid.py").exists() or not (UPSTREAM_ROOT / "generate.py").exists():
         raise FileNotFoundError(f"Upstream EDM repo not found at {UPSTREAM_ROOT}")
 
 
@@ -243,7 +261,8 @@ def main() -> int:
     validate_sampler_target(sampler=args.sampler, target=args.target)
     if args.repeats != 3:
         raise ValueError("paper_eval.py currently records the official 3-run protocol only.")
-    checkpoint = args.checkpoint or DEFAULT_TARGETS[args.target]
+    checkpoint = args.checkpoint or default_checkpoint_for_target(args.target)
+    ref = args.ref or default_ref()
     output_root = Path(args.outdir) / args.sampler / args.target / f"steps_{args.steps}"
     output_root.mkdir(parents=True, exist_ok=True)
     blocks = seed_blocks(seed_start=args.seed_start, repeats=args.repeats, block_size=args.block_size)
@@ -267,7 +286,7 @@ def main() -> int:
             gpus=args.gpus,
             upstream_root=UPSTREAM_ROOT,
             images_path=block_dir,
-            ref=args.ref,
+            ref=ref,
             batch_size=args.batch_size,
             num_expected=args.block_size,
         )
@@ -294,7 +313,7 @@ def main() -> int:
         block_fids=block_fids,
         runtime_s=runtime_s,
         checkpoint=checkpoint,
-        ref=args.ref,
+        ref=ref,
     )
     print(f"sampler: {args.sampler}")
     print(f"target: {args.target}")

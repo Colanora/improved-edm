@@ -21,3 +21,4 @@ third_party/upstream-edm/
 results.tsv
 paper_results.tsv
 artifacts/paper_eval/*
+artifacts/manual_eval/*

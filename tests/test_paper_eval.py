@@ -7,11 +7,17 @@ import pytest
 import paper_eval
 from paper_eval import (
     LEGACY_RESULTS_HEADER,
+    LOCAL_REF_PATH,
+    LOCAL_TARGETS,
+    REMOTE_REF_URL,
+    REMOTE_TARGETS,
     RESULTS_HEADER,
     SeedBlock,
     build_fid_command,
     build_generate_command,
     distributed_prefix,
+    default_checkpoint_for_target,
+    default_ref,
     ensure_results_file,
     parse_fid,
     seed_blocks,
@@ -89,6 +95,32 @@ def test_build_fid_command_matches_upstream_cli() -> None:
 def test_parse_fid_reads_last_numeric_line() -> None:
     stdout = "Loading dataset reference statistics...\nCalculating FID...\n1.79\n"
     assert parse_fid(stdout) == 1.79
+
+
+def test_default_checkpoint_prefers_local_asset(tmp_path, monkeypatch) -> None:
+    local_path = tmp_path / "edm-uncond.pkl"
+    local_path.write_bytes(b"test")
+    monkeypatch.setitem(LOCAL_TARGETS, "uncond", local_path)
+    assert default_checkpoint_for_target("uncond") == str(local_path)
+
+
+def test_default_checkpoint_falls_back_to_remote(monkeypatch, tmp_path) -> None:
+    missing_path = tmp_path / "missing-cond.pkl"
+    monkeypatch.setitem(LOCAL_TARGETS, "cond", missing_path)
+    assert default_checkpoint_for_target("cond") == REMOTE_TARGETS["cond"]
+
+
+def test_default_ref_prefers_local_asset(tmp_path, monkeypatch) -> None:
+    local_ref = tmp_path / "cifar10-32x32.npz"
+    local_ref.write_bytes(b"test")
+    monkeypatch.setattr(paper_eval, "LOCAL_REF_PATH", local_ref)
+    assert default_ref() == str(local_ref)
+
+
+def test_default_ref_falls_back_to_remote(monkeypatch, tmp_path) -> None:
+    missing_ref = tmp_path / "missing.npz"
+    monkeypatch.setattr(paper_eval, "LOCAL_REF_PATH", missing_ref)
+    assert default_ref() == REMOTE_REF_URL
 
 
 def test_ensure_results_file_migrates_legacy_rows(tmp_path, monkeypatch) -> None:

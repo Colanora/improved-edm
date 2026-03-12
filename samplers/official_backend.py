@@ -251,8 +251,8 @@ def sample_images(
     class_labels=None,
     randn_like=torch.randn_like,
     num_steps: int,
-    sigma_min: float,
-    sigma_max: float,
+    sigma_min: float | None = None,
+    sigma_max: float | None = None,
     rho: float = 7,
     S_churn: float = 0,
     S_min: float = 0,
@@ -260,17 +260,20 @@ def sample_images(
     S_noise: float = 1,
 ) -> torch.Tensor:
     sampler_fn = resolve_paper_sampler(sampler_name)
-    return sampler_fn(
+    sampler_kwargs = dict(
         net=net,
         latents=latents,
         class_labels=class_labels,
         randn_like=randn_like,
         num_steps=num_steps,
-        sigma_min=sigma_min,
-        sigma_max=sigma_max,
         rho=rho,
         S_churn=S_churn,
         S_min=S_min,
         S_max=S_max,
         S_noise=S_noise,
     )
+    if sigma_min is not None:
+        sampler_kwargs["sigma_min"] = sigma_min
+    if sigma_max is not None:
+        sampler_kwargs["sigma_max"] = sigma_max
+    return sampler_fn(**sampler_kwargs)

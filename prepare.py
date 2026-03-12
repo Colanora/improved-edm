@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -22,7 +23,10 @@ ARTIFACTS_DIR = REPO_ROOT / "artifacts"
 RESULTS_PATH = REPO_ROOT / "results.tsv"
 MANIFEST_PATH = ASSETS_DIR / "manifest.yaml"
 PAPER_GENERATE_PATH = REPO_ROOT / "paper_generate.py"
+UPSTREAM_ROOT = REPO_ROOT / "third_party" / "upstream-edm"
 UPSTREAM_FID_PATH = REPO_ROOT / "third_party" / "upstream-edm" / "fid.py"
+UPSTREAM_GENERATE_PATH = REPO_ROOT / "third_party" / "upstream-edm" / "generate.py"
+UPSTREAM_REPO_URL = os.environ.get("EDM_UPSTREAM_URL", "https://github.com/NVlabs/edm.git")
 
 DIRECTORIES = (
     ASSETS_DIR / "checkpoints",
@@ -77,12 +81,20 @@ def load_manifest() -> list[AssetSpec]:
         raw = _load_manifest_fallback(MANIFEST_PATH.read_text(encoding="utf-8"))
     return [
         AssetSpec(
-            name="checkpoint",
-            filename=raw["checkpoint"]["filename"],
-            sha256=str(raw["checkpoint"].get("sha256", "")),
-            primary_url=raw["checkpoint"]["primary_url"],
-            mirror_repo=str(raw["checkpoint"].get("mirror_repo", "")),
-            destination=ASSETS_DIR / "checkpoints" / raw["checkpoint"]["filename"],
+            name="checkpoint_uncond",
+            filename=raw["checkpoint_uncond"]["filename"],
+            sha256=str(raw["checkpoint_uncond"].get("sha256", "")),
+            primary_url=raw["checkpoint_uncond"]["primary_url"],
+            mirror_repo=str(raw["checkpoint_uncond"].get("mirror_repo", "")),
+            destination=ASSETS_DIR / "checkpoints" / raw["checkpoint_uncond"]["filename"],
+        ),
+        AssetSpec(
+            name="checkpoint_cond",
+            filename=raw["checkpoint_cond"]["filename"],
+            sha256=str(raw["checkpoint_cond"].get("sha256", "")),
+            primary_url=raw["checkpoint_cond"]["primary_url"],
+            mirror_repo=str(raw["checkpoint_cond"].get("mirror_repo", "")),
+            destination=ASSETS_DIR / "checkpoints" / raw["checkpoint_cond"]["filename"],
         ),
         AssetSpec(
             name="fid_ref",
@@ -169,6 +181,7 @@ def runtime_report() -> dict[str, Any]:
         "uv_index_url": os.environ.get("UV_INDEX_URL", ""),
         "hf_endpoint": os.environ.get("HF_ENDPOINT", ""),
         "paper_generate_exists": PAPER_GENERATE_PATH.exists(),
+        "upstream_generate_exists": UPSTREAM_GENERATE_PATH.exists(),
         "upstream_fid_exists": UPSTREAM_FID_PATH.exists(),
     }
 
@@ -241,11 +254,39 @@ def verify_assets(check_only: bool) -> list[str]:
     return messages
 
 
-def verify_repo_runtime() -> list[str]:
+def ensure_upstream_repo(*, check_only: bool) -> tuple[bool, str]:
+    if UPSTREAM_FID_PATH.exists() and UPSTREAM_GENERATE_PATH.exists():
+        return True, "upstream_edm: present"
+
+    if check_only:
+        return False, f"upstream_edm: missing at {UPSTREAM_ROOT}"
+
+    if UPSTREAM_ROOT.exists() and any(UPSTREAM_ROOT.iterdir()):
+        return False, f"upstream_edm: incomplete checkout at {UPSTREAM_ROOT}"
+
+    try:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", UPSTREAM_REPO_URL, str(UPSTREAM_ROOT)],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        return False, f"upstream_edm: clone failed ({exc})"
+
+    if not UPSTREAM_FID_PATH.exists() or not UPSTREAM_GENERATE_PATH.exists():
+        return False, f"upstream_edm: clone incomplete at {UPSTREAM_ROOT}"
+
+    return True, "upstream_edm: cloned"
+
+
+def verify_repo_runtime(check_only: bool) -> list[str]:
     checks = [
         (PAPER_GENERATE_PATH.exists(), f"paper_generate: {'present' if PAPER_GENERATE_PATH.exists() else 'missing'}"),
-        (UPSTREAM_FID_PATH.exists(), f"upstream_fid: {'present' if UPSTREAM_FID_PATH.exists() else 'missing'}"),
     ]
+    ok, upstream_message = ensure_upstream_repo(check_only=check_only)
+    checks.append((ok, upstream_message))
     failures = [message for ok, message in checks if not ok]
     if failures:
         raise RuntimeError("\n".join(failures))
@@ -264,7 +305,7 @@ def main() -> int:
 
     try:
         messages = verify_assets(check_only=args.check)
-        messages.extend(verify_repo_runtime())
+        messages.extend(verify_repo_runtime(check_only=args.check))
     except RuntimeError as exc:
         print(str(exc), file=sys.stderr)
         return 1

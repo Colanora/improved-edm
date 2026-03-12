@@ -11,6 +11,7 @@ from torch import nn
 
 REPO_ROOT = Path(__file__).resolve().parent
 EDM_ROOT = REPO_ROOT / "third_party" / "edm"
+UPSTREAM_EDM_ROOT = REPO_ROOT / "third_party" / "upstream-edm"
 DEFAULT_SIGMA_MIN = 0.002
 DEFAULT_SIGMA_MAX = 80.0
 
@@ -23,9 +24,10 @@ def _broadcast_sigma(sigma: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
 
 
 def _ensure_edm_imports() -> None:
-    edm_root = str(EDM_ROOT)
-    if edm_root not in sys.path:
-        sys.path.insert(0, edm_root)
+    for root in (UPSTREAM_EDM_ROOT, EDM_ROOT):
+        root_str = str(root)
+        if root.exists() and root_str not in sys.path:
+            sys.path.insert(0, root_str)
     import dnnlib  # noqa: F401
     from torch_utils import persistence  # noqa: F401
 

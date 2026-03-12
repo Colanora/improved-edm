@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 import pickle
+import sys
+from pathlib import Path
 
 import click
 import PIL.Image
@@ -10,6 +12,20 @@ import tqdm
 
 from samplers.official_backend import StackedRandomGenerator, parse_int_list, sample_images
 from third_party.edm import dnnlib
+
+REPO_ROOT = Path(__file__).resolve().parent
+EDM_ROOT = REPO_ROOT / "third_party" / "edm"
+UPSTREAM_EDM_ROOT = REPO_ROOT / "third_party" / "upstream-edm"
+
+
+def _ensure_checkpoint_imports() -> None:
+    for root in (UPSTREAM_EDM_ROOT, EDM_ROOT):
+        root_str = str(root)
+        if root.exists() and root_str not in sys.path:
+            sys.path.insert(0, root_str)
+
+    import dnnlib  # noqa: F401
+    from torch_utils import persistence  # noqa: F401
 
 
 def _dist_init() -> None:
@@ -24,9 +40,14 @@ def _dist_init() -> None:
     if "WORLD_SIZE" not in os.environ:
         os.environ["WORLD_SIZE"] = "1"
 
-    backend = "gloo" if os.name == "nt" else "nccl"
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if torch.cuda.is_available():
+        torch.cuda.set_device(local_rank)
+
+    backend = os.environ.get("EDM_DIST_BACKEND", "")
+    if not backend:
+        backend = "gloo" if os.name == "nt" else "nccl"
     torch.distributed.init_process_group(backend=backend, init_method="env://")
-    torch.cuda.set_device(int(os.environ.get("LOCAL_RANK", "0")))
 
 
 def _dist_rank() -> int:
@@ -50,8 +71,8 @@ def sample_images_for_paper(
     class_labels=None,
     randn_like=torch.randn_like,
     num_steps: int,
-    sigma_min: float,
-    sigma_max: float,
+    sigma_min: float | None = None,
+    sigma_max: float | None = None,
     rho: float = 7,
     S_churn: float = 0,
     S_min: float = 0,
@@ -101,6 +122,7 @@ def main(network_pkl, outdir, seeds, subdirs, class_idx, max_batch_size, sampler
         torch.distributed.barrier()
 
     _dist_print0(f'Loading network from "{network_pkl}"...')
+    _ensure_checkpoint_imports()
     with dnnlib.open_url(network_pkl) as handle:
         net = pickle.load(handle)["ema"].to(device)
 
