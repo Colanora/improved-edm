@@ -4,7 +4,10 @@ import torch
 
 from sampler_protocol import edm_num_steps_for_heun
 from samplers.common import sample_with_local_budget
-from samplers.official_backend import official_edm_sampler
+from samplers.official_backend import official_ablation_sampler
+
+
+RESEARCH_ALPHA = 0.9
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -29,7 +32,7 @@ def research_sampler(
     S_max=float("inf"),
     S_noise=1,
 ):
-    return official_edm_sampler(
+    return official_ablation_sampler(
         net=net,
         latents=latents,
         class_labels=class_labels,
@@ -38,6 +41,11 @@ def research_sampler(
         sigma_min=sigma_min,
         sigma_max=sigma_max,
         rho=rho,
+        solver="heun",
+        discretization="edm",
+        schedule="linear",
+        scaling="none",
+        alpha=RESEARCH_ALPHA,
         S_churn=S_churn,
         S_min=S_min,
         S_max=S_max,
