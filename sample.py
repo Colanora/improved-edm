@@ -11,7 +11,7 @@ RESEARCH_STANDARD_RHO = 6.5
 RESEARCH_STANDARD_STEP_THRESHOLD = 12
 RESEARCH_STANDARD_STEP_PIVOT = 0.55
 RESEARCH_STANDARD_SIGMA_PIVOT = 0.48
-RESEARCH_STANDARD_PREDICTOR_START = 0.45
+RESEARCH_STANDARD_PREDICTOR_SIGMA_START = 0.5
 RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 
 
@@ -60,10 +60,13 @@ def research_t_steps(
 
 
 def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.Tensor:
-    step_fraction = torch.linspace(0.0, 1.0, num_steps, dtype=torch.float64, device=device)
+    step_fraction = research_step_fractions(num_steps, device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
         return torch.zeros_like(step_fraction)
-    late_mix = ((step_fraction - RESEARCH_STANDARD_PREDICTOR_START) / (1.0 - RESEARCH_STANDARD_PREDICTOR_START)).clamp(0.0, 1.0)
+    late_mix = (
+        (step_fraction - RESEARCH_STANDARD_PREDICTOR_SIGMA_START)
+        / (1.0 - RESEARCH_STANDARD_PREDICTOR_SIGMA_START)
+    ).clamp(0.0, 1.0)
     return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
 
 
