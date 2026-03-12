@@ -113,7 +113,6 @@ def research_sampler(
     step_alpha = research_step_alpha(num_steps, latents.device)
     step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
     prev_d_cur = None
-    prev_gate = None
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -138,10 +137,7 @@ def research_sampler(
         alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
         if prev_d_cur is not None:
             gate = research_directional_gate(d_cur, prev_d_cur)
-            if prev_gate is not None:
-                gate = 0.5 * (gate + prev_gate)
             alpha_flat = RESEARCH_ALPHA + gate * (step_alpha[i] - RESEARCH_ALPHA)
-            prev_gate = gate.detach()
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
         t_prime_input = t_hat + alpha_flat * h
