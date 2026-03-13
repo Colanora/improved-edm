@@ -15,8 +15,9 @@ RESEARCH_STANDARD_ALPHA_SIGMA_START = 0.5
 RESEARCH_STANDARD_MAX_ALPHA = 0.96
 RESEARCH_STANDARD_PREDICTOR_START = 0.45
 RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
-RESEARCH_STANDARD_SMOOTH_START = 0.7
-RESEARCH_STANDARD_MAX_SMOOTH = 0.04
+RESEARCH_STANDARD_ADAPTIVE_START = 0.7
+RESEARCH_STANDARD_MAX_BLEND = 0.08
+RESEARCH_STANDARD_ERROR_SCALE = 0.3
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -71,12 +72,11 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
     return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
 
 
-def research_step_smoothing(num_steps: int, device: torch.device) -> torch.Tensor:
+def research_step_late_mix(num_steps: int, device: torch.device) -> torch.Tensor:
     step_fraction = torch.linspace(0.0, 1.0, num_steps, dtype=torch.float64, device=device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
         return torch.zeros_like(step_fraction)
-    late_mix = ((step_fraction - RESEARCH_STANDARD_SMOOTH_START) / (1.0 - RESEARCH_STANDARD_SMOOTH_START)).clamp(0.0, 1.0)
-    return RESEARCH_STANDARD_MAX_SMOOTH * late_mix
+    return ((step_fraction - RESEARCH_STANDARD_ADAPTIVE_START) / (1.0 - RESEARCH_STANDARD_ADAPTIVE_START)).clamp(0.0, 1.0)
 
 
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
@@ -121,9 +121,8 @@ def research_sampler(
     )
     step_alpha = research_step_alpha(num_steps, latents.device)
     step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
-    step_smoothing = research_step_smoothing(num_steps, latents.device)
+    step_late_mix = research_step_late_mix(num_steps, latents.device)
     prev_d_cur = None
-    prev_denoised = None
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -134,16 +133,8 @@ def research_sampler(
         noise_scale = (t_hat.square() - t_cur.square()).clamp_min(0).sqrt()
         x_hat = x_cur + noise_scale * S_noise * randn_like(x_cur)
 
-        denoised_raw = net(x_hat, t_hat, class_labels).to(torch.float64)
-        denoised = denoised_raw
+        denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
         h = t_next - t_hat
-        smooth_flat = None
-        growth_gate = None
-        if prev_d_cur is not None and prev_denoised is not None:
-            raw_d_cur = (x_hat - denoised_raw) / t_hat
-            growth_gate = research_alpha_growth_gate(raw_d_cur, prev_d_cur)
-            smooth_flat = step_smoothing[i] * (1.0 - growth_gate)
-            denoised = denoised_raw + smooth_flat.view(-1, *([1] * (denoised_raw.ndim - 1))) * (prev_denoised - denoised_raw)
         d_cur = (x_hat - denoised) / t_hat
 
         if i == num_steps - 1:
@@ -153,19 +144,24 @@ def research_sampler(
         predictor_d = d_cur
         alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
         if prev_d_cur is not None:
+            growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
             predictor_d = d_cur + step_predictor_mix[i] * (d_cur - prev_d_cur)
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
         t_prime_input = t_hat + alpha_flat * h
         denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
-        if smooth_flat is not None and prev_denoised is not None:
-            denoised = denoised + smooth_flat.view(-1, *([1] * (denoised.ndim - 1))) * (prev_denoised - denoised)
         t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
         d_prime = (x_prime - denoised) / t_prime
-        x_next = x_hat + h * ((1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime)
+        x_heun = x_hat + h * ((1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime)
+        error_rms = (d_prime - d_cur).square().mean(dim=tuple(range(1, d_cur.ndim))).sqrt()
+        signal_rms = d_cur.square().mean(dim=tuple(range(1, d_cur.ndim))).sqrt().clamp_min(1e-12)
+        error_ratio = error_rms / signal_rms
+        blend_flat = step_late_mix[i] * RESEARCH_STANDARD_MAX_BLEND * error_ratio / (error_ratio + RESEARCH_STANDARD_ERROR_SCALE)
+        blend = blend_flat.view(-1, *([1] * (x_heun.ndim - 1)))
+        x_euler = x_hat + h * d_cur
+        x_next = x_heun + blend * (x_euler - x_heun)
         prev_d_cur = d_cur.detach()
-        prev_denoised = denoised.detach()
 
     return x_next
 
