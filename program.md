@@ -1,506 +1,699 @@
 # sampler-autoresearch
 
-## program.md (revised)
+## program.md
 
 This repo is an experiment in autonomous sampler research on a **fixed pre-trained diffusion model**.
 
-The repo is already set up. Your job is **not** to build infrastructure, change evaluation, or retrain a model.
-Your job is to improve the **sampling trajectory** by editing **one file only**:
+The repo is already set up. Your job is **not** to build infrastructure, redesign evaluation, or retrain a model. Your job is to improve the **sampling trajectory** by editing **one file only**:
 
 - `sample.py`
 
-Everything else is frozen.
+Everything else is frozen unless a human explicitly changes the substrate.
 
 ---
 
-## Why this revised protocol exists
+## 0. Mission
 
-The old loop over-weighted low-NFE proxy frontier wins and allowed the branch to drift away from the canonical EDM comparison.
-A sampler that wins on `proxy` at `NFE={5,9,11,13}` but loses on the strict local EDM benchmark at `NFE=35` is **not** a stronger general result.
+The goal is **not** “get one more proxy win.”
+The goal is to discover a sampler mechanism that survives three levels of scrutiny:
 
-At the time of this revision, the known reference points are:
+1. **cheap local frontier screening**,
+2. **local `NFE=35` translation evidence**, and
+3. **authoritative paper-path evaluation**.
 
-- current research sampler `b91fc7c` on `final`, `NFE=35`: **FID = 2.2485**
-- official local EDM Heun on the same evaluator and split: **FID = 2.0073**
-- EDM paper/reference number: **FID = 1.97**
+The final aspiration is a result that is strong enough to defend and simple enough to explain.
 
-Therefore, **proxy frontier gains do not automatically translate to the standard apples-to-apples protocol**.
-This revised program hard-codes translation checks so that this failure mode cannot silently accumulate.
-
----
-
-## Setup assumptions
-
-Assume the following are already true:
-
-1. the unconditional EDM checkpoint exists locally,
-2. the CIFAR-10 FID reference stats exist locally,
-3. the repo runs end-to-end,
-4. the fixed baseline samplers are implemented,
-5. `results.tsv` exists with the correct header.
-
-If any of those assumptions fail, stop and tell the human exactly what is missing.
+You are doing **sampler mechanism research**, not benchmark gardening.
 
 ---
 
-## What to read first
+## 1. Ground truth about this repo
+
+Treat the repo as having **three evaluation layers**.
+
+### A. Auxiliary local frontier loop
+
+This layer is the fast exploration loop:
+
+- `run.py`
+- `evaluate.py`
+- `results.tsv`
+
+This loop is designed around the frontier NFE set:
+
+- `NFE = {5, 9, 11, 13}`
+- `frontier_score` is computed from those frontier NFEs only
+- split sizes are `proxy=5K`, `confirm=10K`, `final=50K`
+
+Use this loop for fast search, family ranking, and failure diagnosis.
+
+### B. Local standard translation layer
+
+This layer is the local apples-to-apples translation check:
+
+- `NFE = 35`
+- this corresponds to the canonical **18-step EDM Heun regime**
+- `standard.tsv` is the sidecar ledger for the local `NFE=35` result
+
+**Important implementation detail:**
+Do **not** assume that the correct local standard command is `run.py --nfe 35` by itself.
+In this repo, the safe local bundle command is:
+
+- `--nfe 5,9,11,13,35`
+
+That bundle preserves the frontier calculation while also printing `fid_N35` to the log. The `fid_N35` value must then be copied into `standard.tsv`.
+
+### C. Authoritative paper path
+
+This is the claim path:
+
+- `paper_eval.py`
+- `paper_generate.py`
+- upstream EDM `fid.py`
+- `paper_results.tsv`
+
+This is the source of truth for serious claims.
+If the local loop and the paper path disagree, trust the paper path.
+
+### Consequence
+
+- `results.tsv` is the **exploration ledger**.
+- `standard.tsv` is the **local translation ledger**.
+- `paper_results.tsv` is the **claim ledger**.
+
+Do **not** hard-code stale commit IDs or stale FID numbers in this file.
+Always derive the current champions from the ledgers that exist in the current checkout.
+
+---
+
+## 2. Research target
+
+The target is **unconditional CIFAR-10 on the official EDM paper path**.
+
+Default authoritative comparison:
+
+- target: `uncond`
+- steps: `18`
+- comparator: `paper_eval.py --sampler heun --target uncond --steps 18`
+- research slot: `paper_eval.py --sampler research --target uncond --steps 18`
+
+A result is not poster-level merely because it wins on proxy.
+A result becomes a serious poster candidate only after it clears the paper path.
+
+---
+
+## 3. What counts as success
+
+There are **four different success labels**. Keep them separate.
+
+### 1) Frontier improvement
+
+A change improves the local frontier loop.
+That means it helps the cheap search metric.
+This is useful, but it is **not** a paper claim.
+
+### 2) Local translation improvement
+
+A change improves the local `fid_N35` result relative to the local Heun comparator and/or the best current research local standard result.
+This is stronger than a frontier win, but it is still **not** authoritative.
+
+### 3) Paper-path improvement
+
+A change improves the authoritative paper-path research result on:
+
+- `sampler=research`
+- `target=uncond`
+- `steps=18`
+
+This is the first level that should be treated as a real claim candidate.
+
+### 4) Poster candidate
+
+You may call something a **poster candidate** only if all of the following hold:
+
+1. it improves the authoritative paper-path result for `research`,
+2. it matches or beats the best paper-path `heun` comparator for the same target and step count,
+3. the change is explainable as **one coherent mechanism family**,
+4. at least one ablation weakens or removes the effect,
+5. the code remains simple enough to explain on one poster figure or in one paragraph,
+6. the frontier loop does not show catastrophic collapse.
+
+Until all of that is true, use weaker language:
+
+- **frontier-specific improvement**
+- **local translation improvement**
+- **paper-path candidate**
+
+Do not blur these categories.
+
+---
+
+## 4. Start-of-run reading order
 
 At the start of a fresh run, read these files in order:
 
 1. `README.md`
 2. `program.md`
-3. `prepare.py`
-4. `run.py`
-5. `evaluate.py`
-6. `sampler_protocol.py`
-7. `sample.py`
-8. `papers/manifest.yaml`
-9. `results.tsv` (if it exists and is non-empty)
-10. `heun_final_nfe35.log` and `b91fc7c_research_final_nfe35.log` if they exist
+3. `run.py`
+4. `evaluate.py`
+5. `sampler_protocol.py`
+6. `paper_eval.py`
+7. `paper_generate.py`
+8. `sample.py`
+9. `papers/manifest.yaml`
+10. `results.tsv` if it exists
+11. `standard.tsv` if it exists
+12. `paper_results.tsv` if it exists
 
-Do not spend time rereading the entire repo every iteration.
+Also inspect recent git history or recent notes so that you do not repeat the same dead family blindly.
+
+Do **not** reread the entire repo every iteration.
 After the first pass, focus on:
 
 - `sample.py`
-- recent results
-- the current standard benchmark gap at `NFE=35`
-- notes for the sampler family you are trying to improve
+- the active mechanism family
+- the most recent kept and discarded commits
+- the gap to local Heun at `NFE=35`
+- the gap to paper-path Heun at `steps=18`
 
 ---
 
-## Experiment branch
+## 5. Frozen contract
 
-Every new autonomous run should happen on a dedicated branch.
-
-Suggested branch name:
-
-- `autoresearch/<tag>`
-
-Examples:
-
-- `autoresearch/apr01`
-- `autoresearch/apr01-gpu0`
-
-Do not run the loop on `main`.
-
----
-
-## Two scoreboards: exploration vs. ship metric
-
-This repo now has **two** scoreboards.
-
-### 1) Frontier scoreboard (exploration only)
-
-This is the low-NFE frontier studied by the repo:
-
-- `NFE = {5, 9, 11, 13}`
-- metric: **lower `frontier_score` is better**
-- final metric on this track: **FID@50K** on the `final` split for each frontier NFE
-- daily search metric on this track: **proxy FID** on 5K images using the same evaluator stack
-
-### 2) Standard scoreboard (ship / claim metric)
-
-This is the canonical local EDM benchmark and the source of truth for claims:
-
-- `NFE = 35`
-- this corresponds to the canonical **18-step EDM Heun regime**
-- split sizes are still `proxy`, `confirm`, and `final`
-- final ship metric: **FID@50K at NFE=35**
-- baseline to beat locally: **official EDM Heun under the same local evaluator**
-
-### Important rule
-
-A sampler that improves the frontier scoreboard but does not improve, or at least preserve, the standard scoreboard is **not** a branch champion.
-It may be a frontier-only curiosity, but it must not replace the standard-qualified base commit.
-
-### Source of truth for comparisons
-
-Use the following precedence:
-
-1. **local official EDM Heun under this repo and evaluator**
-2. current best **research** commit under the same local evaluator
-3. paper/reference EDM number for context only
-
-Do **not** use the paper number as the keep/discard baseline if the local evaluator differs slightly.
-The local Heun run is the apples-to-apples comparator.
-
----
-
-## What you can edit
-
-You may edit only:
+### You may edit only
 
 - `sample.py`
 
 Inside `sample.py`, all of the following are fair game:
 
-- the schedule law,
-- the sigma reparameterization,
-- local error estimators,
-- stateful correction rules,
+- schedule laws,
+- sigma reparameterization,
 - predictor-corrector structure,
+- stateful correction rules,
+- correction strength allocation,
 - trajectory smoothing,
-- clamps and stabilizers,
-- any small scalar hyperparameters local to the sampler.
+- local stabilizers,
+- step-dependent gating,
+- small scalar hyperparameters local to the sampler,
+- simple mechanism-specific diagnostics returned through the existing trace machinery.
 
----
-
-## What you cannot edit
+### You may not edit
 
 Do **not** edit:
 
 - `prepare.py`
 - `run.py`
 - `evaluate.py`
+- `paper_eval.py`
+- `paper_generate.py`
 - `model_adapter.py`
 - `sampler_protocol.py`
 - anything in `samplers/`
 - `pyproject.toml`
 - the checkpoint
 - the FID reference statistics
-- the evaluation split sizes
+- the split sizes
 - the frontier NFE set
-- the standard apples-to-apples benchmark at `NFE=35`
+- the paper target
+- the paper step count for the canonical comparison
 
 Do **not** add dependencies.
 Do **not** retrain the diffusion model.
-Do **not** introduce trainable sampler parameters in v1.
-Do **not** change the benchmark to another dataset.
-Do **not** change the local Heun comparator.
+Do **not** add trainable sampler parameters.
+Do **not** change seeds to cherry-pick wins.
+Do **not** redefine the benchmark.
 
 ---
 
-## Philosophy
+## 6. Do not hard-code moving baselines
 
-This repo is not a sampler zoo.
-It is a **research loop with translation discipline**.
+This file must not embed fixed “current best” numbers that will go stale.
 
-You are not trying to search all possible code paths.
-You are trying to discover a **better trajectory law** that survives both:
+At the beginning of each session, derive these pointers from the ledgers:
 
-- low-NFE frontier evaluation, and
-- the canonical local EDM comparison at `NFE=35`.
+- `frontier_heun_ref`: the best trustworthy local Heun frontier row
+- `frontier_research_best`: the best trustworthy local research frontier row
+- `standard_heun_ref`: the local Heun `final`, `NFE=35` row
+- `standard_research_best`: the best trustworthy research `final`, `NFE=35` row
+- `paper_heun_ref`: the best trustworthy paper-path Heun row for `target=uncond`, `steps=18`
+- `paper_research_best`: the best trustworthy paper-path research row for `target=uncond`, `steps=18`
 
-Prefer ideas that are:
+### Trustworthy means
 
-- clear,
-- explainable,
-- local to the sampler,
-- easy to ablate,
-- cheap enough to re-run,
-- grounded in the literature already tracked in `papers/manifest.yaml`,
-- and plausible across more than one NFE regime.
+- `status != crash`
+- the row came from the correct target/split/step setting
+- the notes are consistent with the mechanism family being tested
+- the row was not later invalidated by a higher-tier failure
 
-Complexity matters.
-A tiny gain that makes `sample.py` ugly is usually not worth it.
-A tiny gain from a simpler sampler is a real win.
-A frontier-only gain that increases the standard benchmark gap is **not** a win.
+### Keep these commit pointers in notes
+
+- `last_frontier_keep`
+- `last_translation_keep`
+- `last_paper_keep`
+- `working_base`
+
+Use this precedence:
+
+1. if a paper-qualified best exists, `working_base = last_paper_keep`
+2. else if a local final-qualified best exists, `working_base = last_translation_keep`
+3. else `working_base = last_frontier_keep`
+
+A frontier-only curiosity must **not** replace a stronger base commit.
 
 ---
 
-## New anti-drift rules
+## 7. Required hypothesis card for every serious candidate
 
-These rules exist specifically to prevent endless proxy tuning that does not translate.
+Before each serious edit, write down a one-screen hypothesis card in your own notes.
+
+Required fields:
+
+- `family`
+- `kind = mechanism | tuning`
+- `track = frontier | standard | both`
+- `base_commit`
+- `hypothesis`
+- `claimed_failure_region`
+- `expected_signature`
+- `ablation`
+- `kill_condition`
+
+### Example
+
+```text
+family=alpha_alignment_gate
+kind=mechanism
+track=standard
+base_commit=<current working base>
+hypothesis=late low-sigma steps are under-corrected in the 18-step regime, so alpha should increase only when adjacent slopes agree
+claimed_failure_region=late standard regime, mostly neutral on frontier
+expected_signature=fid_N35 improves; frontier largely flat; over-aggressive gate hurts confirm
+ablation=replace gate with constant alpha or always-on alpha
+kill_condition=confirm regresses or paper path stays flat
+```
+
+If you cannot explain the idea in this format, the idea is probably not ready.
+
+---
+
+## 8. Establish the evaluation substrate at the start of a run
+
+### Step 1: confirm the git state
+
+Record:
+
+- current branch
+- current commit
+- uncommitted diff status
+
+### Step 2: ensure the ledgers exist or can be created
+
+Required ledgers:
+
+- `results.tsv`
+- `standard.tsv`
+- `paper_results.tsv`
+
+`results.tsv` and `paper_results.tsv` have code-defined headers.
+If `standard.tsv` does not exist, create it with the existing sidecar schema:
+
+```text
+commit	sampler	split	nfe	fid	ref_heun_fid	gap_vs_heun	status	notes
+```
+
+### Step 3: establish local Heun references if missing
+
+Use the local bundle NFEs:
+
+```bash
+BUNDLE_NFES=5,9,11,13,35
+```
+
+Run:
+
+```bash
+uv run run.py --sampler heun --split proxy   --nfe ${BUNDLE_NFES} > heun_proxy_bundle.log 2>&1
+uv run run.py --sampler heun --split confirm --nfe ${BUNDLE_NFES} > heun_confirm_bundle.log 2>&1
+uv run run.py --sampler heun --split final   --nfe ${BUNDLE_NFES} > heun_final_bundle.log 2>&1
+```
+
+Extract:
+
+```bash
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N5:\|^fid_N9:\|^fid_N11:\|^fid_N13:\|^fid_N35:\|^runtime_s:\|^peak_vram_mb:" heun_proxy_bundle.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N5:\|^fid_N9:\|^fid_N11:\|^fid_N13:\|^fid_N35:\|^runtime_s:\|^peak_vram_mb:" heun_confirm_bundle.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N5:\|^fid_N9:\|^fid_N11:\|^fid_N13:\|^fid_N35:\|^runtime_s:\|^peak_vram_mb:" heun_final_bundle.log
+```
+
+Append the `fid_N35` values to `standard.tsv` as the local Heun references.
+
+### Step 4: establish the current research baseline if missing
+
+Run:
+
+```bash
+uv run run.py --sampler research --split proxy   --nfe ${BUNDLE_NFES} > research_proxy_bundle.log 2>&1
+uv run run.py --sampler research --split confirm --nfe ${BUNDLE_NFES} > research_confirm_bundle.log 2>&1
+uv run run.py --sampler research --split final   --nfe ${BUNDLE_NFES} > research_final_bundle.log 2>&1
+```
+
+Extract the same fields and append the `fid_N35` rows to `standard.tsv`.
+
+### Step 5: establish the paper Heun comparator if missing
+
+Run the authoritative comparator at least once:
+
+```bash
+uv run paper_eval.py --sampler heun --target uncond --steps 18 --gpus 1 > paper_heun_uncond_steps18.log 2>&1
+```
+
+### Step 6: establish the current paper research baseline if missing
+
+Run:
+
+```bash
+uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > paper_research_uncond_steps18.log 2>&1
+```
+
+Do **not** call a sampler a serious candidate if the paper comparator has never been established.
+
+---
+
+## 9. Scoreboards and which one matters
+
+There are three scoreboards. They serve different purposes.
+
+### Frontier scoreboard
+
+- source: `results.tsv`
+- metric: lower `frontier_score`
+- purpose: cheap exploration only
+
+### Local standard scoreboard
+
+- source: `standard.tsv`
+- metric: lower `fid` at `NFE=35`
+- comparator: `ref_heun_fid`
+- purpose: local translation evidence
+
+### Paper scoreboard
+
+- source: `paper_results.tsv`
+- metric: lower `fid_min`
+- comparator: paper-path Heun on the same target and step count
+- purpose: authoritative claim
+
+### Priority order
+
+Use this priority order when making decisions:
+
+1. **paper scoreboard** for claims and poster candidacy
+2. **local standard scoreboard** for translation discipline
+3. **frontier scoreboard** for cheap search
+
+A frontier win that widens the higher-tier gap is not a real promotion.
+
+---
+
+## 10. Local bundle protocol
+
+For the local loop, the default bundle is:
+
+```bash
+BUNDLE_NFES=5,9,11,13,35
+```
+
+Rationale:
+
+- `frontier_score` still uses the frontier NFEs,
+- `fid_N35` is printed in the same run,
+- one bundle gives both exploration and translation evidence,
+- `results.tsv` keeps its existing schema,
+- `standard.tsv` can be maintained from the extracted `fid_N35` line.
+
+### Rules for bundle use
+
+- Use the bundle for `proxy`, `confirm`, and `final` local runs.
+- Record the full frontier row in `results.tsv` through `run.py`.
+- Record the `fid_N35` row in `standard.tsv` manually from the log.
+- Do **not** pretend that `results.tsv` alone contains the local standard evidence.
+
+---
+
+## 11. Track-aware evaluation ladder
+
+Every candidate must declare its intended track:
+
+- `track=frontier`
+- `track=standard`
+- `track=both`
+
+### A. `track=frontier`
+
+This track is allowed to aim primarily at low NFE, but it still must obey translation discipline.
+
+#### Stage F1: proxy bundle
+
+```bash
+uv run run.py --sampler research --split proxy --nfe ${BUNDLE_NFES} > run_proxy_bundle.log 2>&1
+```
+
+#### Stage F2: confirm bundle if proxy is promising
+
+```bash
+uv run run.py --sampler research --split confirm --nfe ${BUNDLE_NFES} > run_confirm_bundle.log 2>&1
+```
+
+#### Stage F3: final bundle if promoted
+
+```bash
+uv run run.py --sampler research --split final --nfe ${BUNDLE_NFES} > run_final_bundle.log 2>&1
+```
+
+#### Stage F4: paper path for the best frontier family only
+
+If a frontier family remains simple and survives the translation gate, run:
+
+```bash
+uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > paper_candidate.log 2>&1
+```
+
+### B. `track=standard`
+
+This track is allowed to be neutral on frontier as long as it improves the `NFE=35` regime and does not break frontier badly.
+
+#### Stage S1: proxy bundle
+
+```bash
+uv run run.py --sampler research --split proxy --nfe ${BUNDLE_NFES} > run_proxy_bundle.log 2>&1
+```
+
+Judge primarily by `fid_N35`, secondarily by frontier sanity.
+
+#### Stage S2: confirm bundle if proxy is promising
+
+```bash
+uv run run.py --sampler research --split confirm --nfe ${BUNDLE_NFES} > run_confirm_bundle.log 2>&1
+```
+
+#### Stage S3: final bundle when promoted
+
+```bash
+uv run run.py --sampler research --split final --nfe ${BUNDLE_NFES} > run_final_bundle.log 2>&1
+```
+
+#### Stage S4: authoritative paper promotion
+
+A local standard winner should be promoted quickly to the paper path:
+
+```bash
+uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > paper_candidate.log 2>&1
+```
+
+### C. `track=both`
+
+This track must satisfy both frontier and standard rules.
+Use the same local bundle ladder, then promote to `paper_eval.py`.
+
+---
+
+## 12. Keep / discard rules
 
 ### Rule A: proxy is a screen, not a claim
 
-A `proxy` win is only a reason to continue testing.
-A `proxy` win is **not** sufficient evidence that the branch should advance.
+A `proxy` improvement is permission to continue testing.
+It is not enough to crown a champion.
 
-### Rule B: every frontier test must be paired with a standard translation check
+### Rule B: every keep must name its tier
 
-Any candidate evaluated on the frontier must also be evaluated at `NFE=35` on the same split tier before it can be kept.
+When you keep a candidate, label it explicitly as one of:
 
-That means:
+- `frontier_keep`
+- `translation_keep`
+- `paper_keep`
 
-- frontier `proxy` -> must pair with standard `proxy` at `NFE=35`
-- frontier `confirm` -> must pair with standard `confirm` at `NFE=35`
-- periodic frontier `final` -> must pair with standard `final` at `NFE=35`
+Do not use the word “champion” loosely.
 
-### Rule C: no branch advancement from frontier-only keeps
+### Rule C: track-aware decisions
 
-Keep two commit pointers mentally or in notes:
+#### For `track=frontier`
 
-- `last_frontier_keep`
-- `last_standard_keep`
+A candidate is allowed to be kept provisionally if:
 
-Only `last_standard_keep` is allowed to serve as the base for the next serious experiment.
-If a candidate wins frontier but fails the standard translation gate, reset to `last_standard_keep`, not to the latest frontier-only keep.
+1. `frontier_score` improves on `proxy`,
+2. no individual frontier NFE regresses catastrophically,
+3. `fid_N35` does not show clear local translation failure,
+4. the code remains simple.
 
-### Rule D: no endless same-family scalar twiddling
+A frontier-only candidate cannot replace `working_base` unless it later survives a higher tier.
 
-No more than **2 consecutive kept commits** may be scalar-only tuning changes inside the same mechanism family.
-Examples of scalar-only tuning include:
+#### For `track=standard`
 
-- nudging one schedule exponent,
-- moving one split point,
-- adjusting one fixed corrector weight,
-- changing a single bracket threshold.
+A candidate may be kept even if frontier is flat, provided that:
 
-After 2 such keeps, the next iteration must do one of the following:
+1. `fid_N35` improves on `proxy`,
+2. the sign survives `confirm`,
+3. `final` improves versus the current `last_translation_keep`,
+4. frontier does not collapse.
 
-- switch to a different mechanism family,
-- add an ablation that tests the claimed mechanism,
-- or revert to the last standard-qualified commit and start a new idea.
+For this track, **frontier flat is acceptable; frontier collapse is not**.
 
-A third consecutive scalar-only keep in the same family is not allowed.
+#### For `track=both`
 
-### Rule E: if standard regression appears twice, retire the family
+A candidate must:
 
-If the same mechanism family produces **two separate candidates** that improve frontier but fail the standard translation gate, retire that family for the current run.
-Move on.
+1. improve frontier meaningfully,
+2. improve or safely preserve `fid_N35`,
+3. remain simple.
 
----
+### Rule D: higher-tier failure overrides lower-tier success
 
-## First-run policy
+Use this precedence:
 
-On a fresh branch, the first task is always to establish the current state.
+- paper failure overrides local success
+- local final failure overrides proxy/confirm success
+- confirm failure overrides proxy success
 
-### Step 1
+### Rule E: when in doubt, classify as neutral
 
-Confirm the current branch and commit.
+Do **not** promote tiny one-off deltas aggressively.
+If a result is so small that it is hard to distinguish from noise or extraction error, treat it as **neutral** until:
 
-### Step 2
+- the sign survives `confirm`, or
+- the sign survives `final`, or
+- the paper path preserves the sign.
 
-Confirm `results.tsv` exists and has the expected header.
+### Rule F: simplicity matters
 
-### Step 3
-
-Establish the immutable local apples-to-apples comparator at `NFE=35` if it is not already logged for this environment:
-
-```bash
-uv run run.py --sampler heun --split proxy --nfe 35 > heun_proxy_nfe35.log 2>&1
-uv run run.py --sampler heun --split confirm --nfe 35 > heun_confirm_nfe35.log 2>&1
-uv run run.py --sampler heun --split final --nfe 35 > heun_final_nfe35.log 2>&1
-```
-
-Extract the metrics:
-
-```bash
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" heun_proxy_nfe35.log
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" heun_confirm_nfe35.log
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" heun_final_nfe35.log
-```
-
-Treat `heun_final_nfe35.log` as the local source of truth.
-
-### Step 4
-
-Run the frozen reference baselines on the frontier proxy split if they are not already logged on this branch:
-
-```bash
-uv run run.py --sampler heun --split proxy > run_heun.log 2>&1
-uv run run.py --sampler euler --split proxy > run_euler.log 2>&1
-```
-
-### Step 5
-
-Run the current research sampler as-is on both scoreboards:
-
-```bash
-uv run run.py --sampler research --split proxy > run_research_frontier_proxy.log 2>&1
-uv run run.py --sampler research --split proxy --nfe 35 > run_research_standard_proxy.log 2>&1
-uv run run.py --sampler research --split confirm --nfe 35 > run_research_standard_confirm.log 2>&1
-uv run run.py --sampler research --split final --nfe 35 > run_research_standard_final.log 2>&1
-```
-
-Extract the metrics:
-
-```bash
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_research_frontier_proxy.log
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_research_standard_proxy.log
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_research_standard_confirm.log
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_research_standard_final.log
-```
-
-The unmodified `research` run is the baseline for the editable slot on both scoreboards.
+A tiny gain that turns `sample.py` into a tangled mess is usually not worth keeping.
+A simpler mechanism with the same numbers is better research.
 
 ---
 
-## Search splits
+## 13. Champion rules
 
-Use these three splits:
+### Frontier champion
 
-### `proxy`
+A frontier champion is the best currently trusted local low-NFE candidate.
+It is useful for exploration, not for claims.
 
-- 5,000 samples
-- fast screen only
-- never sufficient on its own for a branch advancement claim
+### Translation champion
 
-### `confirm`
+A translation champion is the best currently trusted local `final`, `NFE=35` candidate in `standard.tsv`.
+It is the default serious base for local iteration until the paper path says otherwise.
 
-- 10,000 samples
-- medium-cost translation check
-- used whenever a proxy improvement is small, noisy, or frontier-only
+### Paper champion
 
-### `final`
+A paper champion is the best currently trusted row in `paper_results.tsv` for:
 
-- 50,000 samples
-- paper-quality numbers
-- the only split that can crown a new standard benchmark champion
+- `sampler=research`
+- `target=uncond`
+- `steps=18`
 
----
+Only the paper champion can anchor a poster-level claim.
 
-## Required evaluation ladder for every candidate
+### Promotion rule
 
-For every candidate edit to `sample.py`, run the following ladder in order.
-Do not skip the translation checks.
+A new `working_base` should usually come from the strongest available tier:
 
-### Stage 1: frontier proxy
-
-```bash
-uv run run.py --sampler research --split proxy > run_frontier_proxy.log 2>&1
-```
-
-Read out:
-
-```bash
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_frontier_proxy.log
-```
-
-### Stage 2: standard proxy translation check
-
-```bash
-uv run run.py --sampler research --split proxy --nfe 35 > run_standard_proxy.log 2>&1
-```
-
-Read out:
-
-```bash
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_standard_proxy.log
-```
-
-### Stage 3: confirm only if Stage 1 or Stage 2 looks promising
-
-```bash
-uv run run.py --sampler research --split confirm > run_frontier_confirm.log 2>&1
-uv run run.py --sampler research --split confirm --nfe 35 > run_standard_confirm.log 2>&1
-```
-
-Read out:
-
-```bash
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_frontier_confirm.log
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_standard_confirm.log
-```
-
-### Stage 4: final standard challenge when promoted
-
-```bash
-uv run run.py --sampler research --split final --nfe 35 > run_standard_final.log 2>&1
-```
-
-Read out:
-
-```bash
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_standard_final.log
-```
-
-Only Stage 4 can update the standard champion.
+- prefer `paper_keep`
+- otherwise prefer `translation_keep`
+- otherwise keep `frontier_keep` only as a scouting branch, not as the main base
 
 ---
 
-## Keep / discard rule (revised)
+## 14. Promotion cadence to the paper path
 
-A change must satisfy **both** a frontier rule and a standard translation rule.
+The paper path is expensive, so use it deliberately.
+But do not postpone it forever.
 
-### Frontier rule
+Promote to `paper_eval.py` when any of the following is true:
 
-A change is frontier-promising only if all of the following hold on `proxy`:
+1. a local `final`, `NFE=35` result becomes the new translation champion,
+2. a new mechanism family survives `proxy` and `confirm` and remains explainable,
+3. the branch has accumulated **3 local keeps** without a paper check,
+4. the candidate is the first representative of a genuinely new family,
+5. you believe the result is strong enough that you would mention it in a research note.
 
-1. `frontier_score` improves, and
-2. no individual frontier NFE regresses by more than **3%**, and
-3. the code remains reasonably simple.
-
-### Standard translation rule
-
-A frontier-promising change may be kept only if the paired `NFE=35` run also satisfies:
-
-1. on `proxy`, the `NFE=35` FID does **not regress materially** versus the current `last_standard_keep`, and
-2. on `confirm`, the `NFE=35` FID also does not regress materially, and
-3. the gap to local Heun at `NFE=35` does not widen in a meaningful way.
-
-Use these default tolerances:
-
-- on `proxy`: treat worse than **+1.0%** at `NFE=35` as a regression
-- on `confirm`: treat worse than **+0.5%** at `NFE=35` as a regression
-- on `final`: any clear worsening at `NFE=35` means the candidate is not a champion
-
-### Important interpretation
-
-- frontier win + standard regression = **discard**
-- frontier win + standard neutral = **provisional only**, requires confirm
-- frontier win + standard improvement = **promote** to final challenge
-- standard improvement without frontier improvement can still be valuable if the mechanism is explicitly aimed at the standard benchmark
-
-### Champion rule
-
-A new branch champion must satisfy all of the following:
-
-1. improve `FID@50K` at `NFE=35` versus the current `last_standard_keep`, and
-2. reduce or preserve the gap versus local Heun, and
-3. not regress any frontier NFE by more than **3%** on `final` if a frontier final is run, and
-4. remain reasonably simple.
-
-If a candidate improves frontier but fails this champion rule, it is not the new base commit.
+Do **not** let the search spend dozens of commits in local-only limbo.
 
 ---
 
-## Main loop
+## 15. Ablation rule
 
-LOOP FOREVER:
+Every serious mechanism family must have an ablation.
 
-1. Look at the current git state.
-2. Record the current `last_standard_keep`.
-3. Propose **one concrete mechanism idea**.
-4. Label it in your own notes as one of:
-   - `mechanism`
-   - `tuning`
-5. Also label the target track:
-   - `frontier`
-   - `standard`
-   - `both`
-6. Edit only `sample.py`.
-7. Commit the change.
-8. Run the frontier proxy evaluation.
-9. Run the paired standard proxy translation check at `NFE=35`.
-10. If either run crashes, inspect the logs.
-11. If frontier does not improve and standard does not improve, discard.
-12. If frontier improves but standard proxy regresses materially, discard and reset to `last_standard_keep`.
-13. If frontier improves and standard proxy is neutral or better, run `confirm` on both tracks.
-14. Apply the revised keep/discard rule.
-15. Only if the candidate passes the standard translation rule may it become the new working base.
-16. After at most **3 promoted keeps** without a standard final challenge, run `final --nfe 35` before continuing.
-17. If the final standard challenge fails, reset to `last_standard_keep`.
-18. If it succeeds, advance `last_standard_keep`.
-19. Log the result.
+At minimum, support one of these:
+
+- turn the mechanism off,
+- replace it with a constant version,
+- move the gating region earlier or later,
+- remove the stateful part while keeping the schedule,
+- keep the same scalar budget but remove the logic.
+
+Ablation is required before calling a paper-path win a poster candidate.
 
 ---
 
-## Crash policy
+## 16. Anti-drift and plateau rules
 
-If a run crashes:
+These rules exist to prevent endless local hill-climbing without a story.
 
-1. inspect the last 50 log lines,
-2. decide whether the crash is a trivial bug or a bad idea,
-3. if trivial, fix and rerun,
-4. if the idea is fundamentally unstable, mark it as `crash`, log it, revert to `last_standard_keep`, and move on.
+### Rule A: no frontier-only drift
 
-Use:
+A frontier keep that later fails local `final` or paper path must not become the new serious base.
+Reset to the last stronger tier.
 
-- `0.000000` for `frontier_score`
-- `0.0` for all FIDs
-- `0.0` for VRAM
+### Rule B: no endless same-family scalar twiddling
 
-in crash rows.
+No more than **2 consecutive kept commits** may be scalar-only changes in the same family.
+After that, the next serious iteration must do one of:
 
-Do not get stuck retrying the same broken idea forever.
+- switch family,
+- add an ablation,
+- simplify the mechanism,
+- or promote the family to a higher tier.
+
+### Rule C: retire a family after repeated higher-tier failure
+
+Retire the family for the current run if any of the following happens:
+
+- it produces **2 separate confirm regressions**,
+- it produces **2 separate final regressions**,
+- it reaches the paper path and fails clearly twice,
+- it stays neutral for **3 serious attempts** with no clearer story.
+
+### Rule D: no score hoarding
+
+Do not keep stacking provisional keeps without promoting one representative to `final` or `paper_eval.py`.
 
 ---
 
-## Logging results
+## 17. Logging rules
 
-Continue to use `results.tsv` for frontier bundle rows with the existing schema:
+### `results.tsv`
+
+`run.py` writes the frontier ledger with this schema:
 
 ```text
 commit	sampler	split	frontier_score	fid_N5	fid_N9	fid_N11	fid_N13	peak_vram_mb	status	notes
@@ -508,192 +701,159 @@ commit	sampler	split	frontier_score	fid_N5	fid_N9	fid_N11	fid_N13	peak_vram_mb	s
 
 Rules:
 
-- one row per frontier evaluation bundle,
-- use `research` as the sampler name for the editable method,
+- one row per local frontier bundle run,
+- use `research` as the sampler name for the editable slot,
 - use `keep`, `discard`, or `crash`,
 - keep notes short and concrete,
-- include the mechanism family and whether the row was `mechanism` or `tuning`,
-- do not commit `results.tsv` unless the human explicitly wants that.
+- prefix notes with `family=...; kind=...; track=...;` whenever possible,
+- do not rewrite history,
+- do not commit the file unless the human explicitly wants that.
 
-### New required sidecar log for the standard benchmark
+### `standard.tsv`
 
-Also maintain a plain TSV file named `standard.tsv` with this schema:
+Maintain the local translation sidecar with this schema:
 
 ```text
 commit	sampler	split	nfe	fid	ref_heun_fid	gap_vs_heun	status	notes
 ```
 
-Example:
-
-```text
-b91fc7c	research	final	35	2.2485	2.0073	0.2412	discard	frontier-only gain failed standard benchmark
-```
-
 Rules:
 
-- one row per `NFE=35` evaluation,
-- `ref_heun_fid` must come from the matching local Heun run on the same split tier,
+- one row per extracted local `fid_N35` result,
+- `nfe` should be `35`,
+- `ref_heun_fid` must come from the matching local Heun split,
 - `gap_vs_heun = fid - ref_heun_fid`,
-- negative is good,
-- do not call a result a win unless the `gap_vs_heun` improves or stays safely neutral.
+- negative is better,
+- append only,
+- do not invent rows that you did not actually run.
 
-### Required timing fields in eval logs
+### `paper_results.tsv`
 
-Every long-running evaluation log must expose timing fields immediately, not only at process exit.
-
-For `run.py` logs, require:
-
-- `start_time_utc`
-- `end_time_utc`
-- `runtime_s`
-- `nfe_<budget>_start_time_utc`
-- `nfe_<budget>_progress`
-- `nfe_<budget>_end_time_utc`
-- `nfe_<budget>_runtime_s`
-
-For `paper_eval.py` logs, require:
-
-- `start_time_utc`
-- `end_time_utc`
-- `runtime_s`
-- `block_<index>_start_time_utc`
-- `block_<index>_generate_runtime_s`
-- `block_<index>_fid_runtime_s`
-- `block_<index>_end_time_utc`
-- `block_<index>_runtime_s`
-
-If a run looks slow, inspect these timing fields before deciding it is hung.
+`paper_eval.py` writes the authoritative claim ledger.
+Do not mutate its schema.
+Use it exactly as produced by the code.
 
 ---
 
-## Allowed experiment directions
+## 18. Crash policy
 
-Good experiment families include:
+If a run crashes:
 
-- better time allocation laws,
+1. inspect the last 50 log lines,
+2. decide whether the crash is a trivial implementation bug or a bad idea,
+3. if trivial, fix once and rerun,
+4. if fundamentally unstable, mark it as `crash`, log it, revert to `working_base`, and move on.
+
+Use the existing crash conventions for `results.tsv`.
+For `standard.tsv`, record only real extracted `fid_N35` values from successful runs.
+Do not get stuck retrying the same broken idea forever.
+
+---
+
+## 19. Main loop
+
+LOOP FOREVER:
+
+1. check git state,
+2. identify `working_base`,
+3. inspect recent keeps/discards so you do not repeat a dead family,
+4. write one hypothesis card,
+5. edit only `sample.py`,
+6. commit the change,
+7. run the local proxy bundle,
+8. decide whether the candidate is frontier-promising, standard-promising, both, or neither,
+9. if promising, run the local confirm bundle,
+10. if confirm fails, discard and reset to `working_base`,
+11. if confirm passes, decide whether the candidate deserves a local `final`,
+12. if local `final` fails, discard and reset,
+13. if local `final` wins, update `last_translation_keep`,
+14. promote serious winners to `paper_eval.py` on a disciplined cadence,
+15. if paper path wins, update `last_paper_keep` and `working_base`,
+16. if paper path fails, do not let the candidate replace a stronger base,
+17. log the result,
+18. retire dead families,
+19. continue.
+
+Never run multiple unrelated mechanism changes in a single candidate commit.
+One idea per commit.
+
+---
+
+## 20. Allowed experiment families
+
+Good families include:
+
+- better effort allocation across the trajectory,
 - sigma-space reparameterization,
-- local error proxies,
-- curvature-aware schedules,
-- trajectory smoothing,
-- state averaging,
-- dynamic corrector strength,
-- order switching by region,
-- step-size damping,
-- monotone correction rules,
-- simplified schedule or correction ideas grounded in the tracked EDM literature.
+- late-step correction scheduling,
+- predictor strength scheduling,
+- slope-aware or curvature-aware gating,
+- local consistency tests between adjacent steps,
+- state smoothing or damped state transport,
+- error-proxy-guided correction,
+- simple region-specific order behavior,
+- monotone stabilizers,
+- simplifications of a stronger family that preserve the effect.
 
-Especially good are ideas that:
+Especially good ideas:
 
-- explain *why* a region of the trajectory is hard,
-- predict whether the effect should help `NFE={5,9,11,13}`, `NFE=35`, or both,
-- change *where* solver effort is spent,
-- reduce error accumulation without touching model weights,
-- and survive the standard translation gate.
+- explain *why* a specific region is hard,
+- predict **which regime** should benefit,
+- produce a recognizable frontier/standard signature,
+- remain small enough to ablate cleanly.
 
 ---
 
-## Disallowed directions
+## 21. Disallowed directions
 
-Do not spend iterations on:
+Do **not** spend iterations on:
 
-- arbitrary random hyperparameter fishing with no mechanism,
-- changing file structure,
+- blind hyperparameter fishing with no mechanism story,
+- repo restructuring,
 - new dependencies,
-- changing the benchmark,
-- training tiny side models,
+- training side models,
 - changing the FID implementation,
-- changing seeds to cherry-pick wins,
-- comparing only preview images and ignoring metrics,
-- keeping frontier-only wins that fail the standard benchmark,
+- changing seeds to rescue a weak result,
+- preview-image cherry-picking,
+- frontier-only wins that fail higher-tier checks,
 - more than 2 consecutive scalar-only same-family keeps,
-- or treating a `proxy` result as if it were a final apples-to-apples result.
+- or paper-claim language without paper-path evidence.
 
 ---
 
-## Periodic validation cadence
+## 22. Language discipline
 
-### Every candidate that passes frontier proxy
+Use these exact categories:
 
-Also run:
+- **frontier-specific improvement** = better local frontier only
+- **local translation improvement** = better local `NFE=35`
+- **paper-path improvement** = better `paper_eval.py` result
+- **poster candidate** = paper-path win vs Heun + coherent mechanism + ablation
 
-```bash
-uv run run.py --sampler research --split proxy --nfe 35 > run_standard_proxy.log 2>&1
-```
+Do not say:
 
-### Every candidate that passes frontier confirm
+- “new SOTA”
+- “paper-level result”
+- “better sampler”
 
-Also run:
-
-```bash
-uv run run.py --sampler research --split confirm --nfe 35 > run_standard_confirm.log 2>&1
-```
-
-### At most every 3 promoted keeps
-
-Run the standard final challenge:
-
-```bash
-uv run run.py --sampler research --split final --nfe 35 > run_standard_final.log 2>&1
-```
-
-### Every 5 standard-qualified keeps
-
-Run the frontier paper-quality sanity check:
-
-```bash
-uv run run.py --sampler research --split final --nfe 5,9 > run_final_short.log 2>&1
-```
-
-### Every 10 standard-qualified keeps
-
-Run the full frontier final:
-
-```bash
-uv run run.py --sampler research --split final --nfe 5,9,11,13 > run_final_full.log 2>&1
-```
-
-### Every 5 standard-qualified keeps also export diagnostics
-
-Export trajectory diagnostics for the current `research` sampler at:
-
-- `NFE=11`
-- `split=proxy`
-- fixed diagnostic seeds
-
-These are not the primary metric, but they help explain whether the mechanism is real.
+unless the paper path actually supports it.
 
 ---
 
-## What counts as a good research idea
+## 23. Final philosophy
 
-A good idea has all or most of these properties:
+This repo is not a sampler zoo.
+It is a **mechanism search loop with translation discipline**.
 
-- it is visible in `sample.py`,
-- it is explainable in one sentence,
-- it changes the trajectory rather than the model,
-- it can be ablated,
-- it can be expressed as a small local change,
-- it has a plausible mechanism,
-- it predicts its own NFE signature,
-- and it does not rely on proxy-only success.
+Prefer ideas that are:
 
-Before each serious candidate, write down in your own notes:
+- local,
+- explainable,
+- ablatable,
+- cheap enough to re-run,
+- aligned with the official claim path,
+- and simple enough to survive explanation.
 
-- the mechanism family,
-- the claimed failure region,
-- whether the idea should help frontier, standard, or both,
-- and what result would falsify the idea.
-
-If you cannot say that clearly, the idea is probably not ready.
-
----
-
-## Final interpretation rule
-
-Use this exact language discipline:
-
-- If a change improves only the frontier scoreboard, call it a **frontier-specific improvement**.
-- If a change improves the standard scoreboard at `NFE=35`, call it a **standard benchmark improvement**.
-- Only if it beats the local Heun comparator on `final`, `NFE=35`, may you call it a **better apples-to-apples result**.
-
-Do not blur these categories.
+A cheap proxy win is nice.
+A local `NFE=35` win is better.
+A paper-path win with a clear mechanism is the real target.
