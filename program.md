@@ -105,7 +105,7 @@ A result becomes a serious poster candidate only after it clears the paper path.
 
 ## 3. What counts as success
 
-There are **four different success labels**. Keep them separate.
+There are several success labels. Keep them separate.
 
 ### 1) Frontier improvement
 
@@ -118,15 +118,22 @@ This is useful, but it is **not** a paper claim.
 A change improves the local `fid_N35` result relative to the local Heun comparator and/or the best current research local standard result.
 This is stronger than a frontier win, but it is still **not** authoritative.
 
-### 3) Paper-path improvement
+### 3) Paper-side outcomes
 
-A change improves the authoritative paper-path research result on:
+Paper-side work has two stages of classification:
 
-- `sampler=research`
-- `target=uncond`
-- `steps=18`
+- block-0 screen: `screen_fail` or `paper_screen_pass`
+- full paper run after a screen pass: `paper_loss`, `paper_micro_win`, or `paper_meaningful_win`
 
-This is the first level that should be treated as a real claim candidate.
+A block-0 improvement is not yet a paper win grade.
+It is only a `paper_screen_pass` if it beats the current paper screen and earns a full paper run.
+
+### Paper-side success labels
+
+- `paper_screen_pass`: beats the current paper screen and earns a full paper run
+- `paper_micro_win`: improves full paper metrics, but too small to change the Heun story
+- `paper_meaningful_win`: improves full paper metrics enough to materially change the gap-to-Heun story
+- `poster_candidate`: `paper_meaningful_win` vs Heun + coherent mechanism + ablation + simplicity
 
 ### 4) Poster candidate
 
@@ -143,8 +150,11 @@ Until all of that is true, use weaker language:
 
 - **frontier-specific improvement**
 - **local translation improvement**
-- **paper-path candidate**
+- **paper_screen_pass**
+- **paper_micro_win**
+- **paper_meaningful_win**
 
+Only `paper_meaningful_win` may be described as real movement toward a poster candidate.
 Do not blur these categories.
 
 ---
@@ -167,6 +177,18 @@ At the start of a fresh run, read these files in order:
 12. `paper_results.tsv` if it exists
 
 Also inspect recent git history or recent notes so that you do not repeat the same dead family blindly.
+
+### Commit attribution discipline
+
+Classify recent commits as one of:
+
+- `research` = only `sample.py` changed
+- `report` = only `experiment_reports.tsv` changed
+- `meta` = logs / docs / ignore files / harness changes
+- `human` = manual user commit
+
+Only `research` commits count toward keeps, champions, and trial cadence.
+Ignore `meta` and `human` commits when inferring the active mechanism family.
 
 Do **not** reread the entire repo every iteration.
 After the first pass, focus on:
@@ -511,6 +533,7 @@ Every candidate must declare its intended track:
 - `track=frontier`
 - `track=standard`
 - `track=both`
+- `track=paper`
 
 ### A. `track=frontier`
 
@@ -579,6 +602,31 @@ uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > ${
 This track must satisfy both frontier and standard rules.
 Use the same local bundle ladder, then promote to `paper_eval.py`.
 
+### D. `track=paper`
+
+Use this track when the active goal is to refine or ablate an already paper-promoted family.
+
+- base = `last_paper_keep` if it exists, else `last_translation_keep`
+- one candidate commit = one edit in `sample.py`, one hypothesis, one family
+
+#### Stage P0: run a paper block-0 screen against the exact current paper screen reference
+
+```bash
+uv run paper_eval.py --sampler research --target uncond --steps 18 --repeats 1 --gpus 1 > ${LOG_DIR}/paper_block0_candidate.log 2>&1
+```
+
+Judge this run against the exact current paper screen reference for `seed_block_0`.
+
+#### Stage P1: continue to full paper evaluation only if block 0 is strictly better
+
+```bash
+uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > ${LOG_DIR}/paper_candidate.log 2>&1
+```
+
+#### Stage P2: classify the outcome as `paper_loss`, `paper_micro_win`, or `paper_meaningful_win`
+
+Only `paper_meaningful_win` may be described as real movement toward a poster candidate.
+
 ---
 
 ## 12. Keep / discard rules
@@ -630,6 +678,16 @@ A candidate must:
 2. improve or safely preserve `fid_N35`,
 3. remain simple.
 
+#### For `track=paper`
+
+Use this track only when iterating directly on an already paper-promoted family.
+
+1. Stage P0 must beat the exact current paper screen reference on `seed_block_0`,
+2. a `paper_screen_pass` is permission to continue, not a champion update by itself,
+3. Stage P1 must be labeled `paper_loss`, `paper_micro_win`, or `paper_meaningful_win`,
+4. only `paper_meaningful_win` may be described as real movement toward a poster candidate,
+5. if the result is `paper_loss`, reset to the last stronger base.
+
 ### Rule D: higher-tier failure overrides lower-tier success
 
 Use this precedence:
@@ -674,6 +732,8 @@ A paper champion is the best currently trusted row in `paper_results.tsv` for:
 - `target=uncond`
 - `steps=18`
 
+If `paper_results.tsv` is not available in the visible checkout, reconstruct the current paper champion from the structured paper-side prefixes in `experiment_reports.tsv`.
+
 Only the paper champion can anchor a poster-level claim.
 
 ### Promotion rule
@@ -687,6 +747,16 @@ A new `working_base` should usually come from the strongest available tier:
 ---
 
 ## 14. Promotion cadence to the paper path
+
+### Story checkpoint before paper promotion
+
+Before any paper-side promotion, write:
+
+1. the signal being measured,
+2. the trajectory region it is supposed to help,
+3. one falsifiable prediction about what should move if the story is right.
+
+If this cannot be written cleanly, do not promote the variant.
 
 The paper path is expensive, so use it deliberately.
 But do not postpone it forever.
@@ -738,7 +808,18 @@ After that, the next serious iteration must do one of:
 - simplify the mechanism,
 - or promote the family to a higher tier.
 
-### Rule C: retire a family after repeated higher-tier failure
+### Rule C: no endless same-family paper micro-tuning
+
+No more than 2 consecutive same-family `paper_micro_win` or `paper_screen_pass` commits may be kept.
+
+After that, the next serious iteration must do one of:
+
+- a simplifying ablation,
+- a family switch,
+- a new causal mechanism,
+- or a full reset to the last stronger base.
+
+### Rule D: retire a family after repeated higher-tier failure
 
 Retire the family for the current run if any of the following happens:
 
@@ -747,7 +828,7 @@ Retire the family for the current run if any of the following happens:
 - it reaches the paper path and fails clearly twice,
 - it stays neutral for **3 serious attempts** with no clearer story.
 
-### Rule D: no score hoarding
+### Rule E: no score hoarding
 
 Do not keep stacking provisional keeps without promoting one representative to `final` or `paper_eval.py`.
 
@@ -815,10 +896,20 @@ Maintain the tracked periodic report ledger with this schema:
 report_utc	run_count_since_last_report	working_base	trials_done	performance_change	observations	next_action	commit_note
 ```
 
+### Paper-side reporting discipline
+
+For any paper-side report row, begin the `trials_done` field with this structured prefix:
+
+```text
+paper_base=<sha>; candidate=<sha>; family=<name>; outcome=<screen_fail|paper_loss|paper_micro_win|paper_meaningful_win>; fid_blocks=<b0/b1/b2>; fid_min=<x>; heun_min=<y>; gap_to_heun=<z>;
+```
+
+If `paper_results.tsv` is not available in the visible checkout, this prefix must still be sufficient to reconstruct the current paper champion.
+
 Rules:
 
 - append one row every 5 completed evaluation runs, or sooner when a paper promotion finishes,
-- summarize the candidate commits and outcomes since the previous report in `trials_done`,
+- for paper-side rows, keep the structured prefix first in `trials_done`, then summarize the candidate commits and outcomes since the previous report,
 - describe the observed metric deltas versus the active local or paper references in `performance_change`,
 - use `observations` for mechanistic takeaways, negative evidence, and stability notes,
 - keep `next_action` concrete enough to guide the next experiment turn,
@@ -849,22 +940,27 @@ LOOP FOREVER:
 2. identify `working_base`,
 3. inspect recent keeps/discards so you do not repeat a dead family,
 4. write one hypothesis card,
-5. edit only `sample.py`,
-6. commit the change,
-7. run the local proxy bundle,
-8. decide whether the candidate is frontier-promising, standard-promising, both, or neither,
-9. if promising, run the local confirm bundle,
-10. if confirm fails, discard and reset to `working_base`,
-11. if confirm passes, decide whether the candidate deserves a local `final`,
-12. if local `final` fails, discard and reset,
-13. if local `final` wins, update `last_translation_keep`,
-14. promote serious winners to `paper_eval.py` on a disciplined cadence,
-15. if paper path wins, update `last_paper_keep` and `working_base`,
-16. if paper path fails, do not let the candidate replace a stronger base,
-17. log the result,
-18. if the report cadence boundary is hit, append and commit `experiment_reports.tsv`,
-19. retire dead families,
-20. continue.
+5. declare `track=frontier`, `track=standard`, `track=both`, or `track=paper`,
+6. edit only `sample.py`,
+7. commit the change,
+8. if `track=paper`, run Stage P0 against the exact current paper screen reference,
+9. if `track=paper` and block 0 fails, classify it as `screen_fail`, log it, reset to `working_base`, and continue,
+10. if `track` is not `paper`, run the local proxy bundle,
+11. if `track` is not `paper`, decide whether the candidate is frontier-promising, standard-promising, both, or neither,
+12. if `track` is not `paper` and the candidate is not promising, discard and reset to `working_base`,
+13. if `track` is not `paper` and the candidate is promising, run the local confirm bundle,
+14. if `track` is not `paper` and confirm fails, discard and reset to `working_base`,
+15. if `track` is not `paper` and confirm passes, decide whether the candidate deserves a local `final`,
+16. if `track` is not `paper` and local `final` fails, discard and reset,
+17. if `track` is not `paper` and local `final` wins, update `last_translation_keep`,
+18. promote serious winners or `paper_screen_pass` candidates to full `paper_eval.py` on a disciplined cadence,
+19. if the full paper result improves, classify it as `paper_micro_win` or `paper_meaningful_win` and update `last_paper_keep` if it becomes the best trusted row,
+20. if the full paper result is `paper_loss`, do not let the candidate replace a stronger base,
+21. only describe real poster-candidate movement after a `paper_meaningful_win`,
+22. log the result,
+23. if the report cadence boundary is hit, append and commit `experiment_reports.tsv`,
+24. retire dead families,
+25. continue.
 
 Never run multiple unrelated mechanism changes in a single candidate commit.
 One idea per commit.
@@ -909,6 +1005,7 @@ Do **not** spend iterations on:
 - preview-image cherry-picking,
 - frontier-only wins that fail higher-tier checks,
 - more than 2 consecutive scalar-only same-family keeps,
+- more than 2 consecutive same-family `paper_micro_win` or `paper_screen_pass` keeps,
 - or paper-claim language without paper-path evidence.
 
 ---
@@ -919,8 +1016,14 @@ Use these exact categories:
 
 - **frontier-specific improvement** = better local frontier only
 - **local translation improvement** = better local `NFE=35`
-- **paper-path improvement** = better `paper_eval.py` result
-- **poster candidate** = paper-path win vs Heun + coherent mechanism + ablation
+- **screen_fail** = paper block 0 did not beat the current paper screen reference
+- **paper_loss** = full paper run did not improve the trusted paper base
+- **paper_screen_pass** = beats the current paper screen and earns a full paper run
+- **paper_micro_win** = improves full paper metrics, but too small to change the Heun story
+- **paper_meaningful_win** = improves full paper metrics enough to materially change the gap-to-Heun story
+- **poster_candidate** = `paper_meaningful_win` vs Heun + coherent mechanism + ablation + simplicity
+
+Only `paper_meaningful_win` counts as real movement toward a poster candidate.
 
 Do not say:
 
