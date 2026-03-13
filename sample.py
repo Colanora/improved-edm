@@ -7,7 +7,7 @@ from sampler_protocol import SamplerOutput, edm_num_steps_for_heun, finalize_ima
 
 RESEARCH_ALPHA = 0.9
 RESEARCH_FRONTIER_RHO = 7.0
-RESEARCH_STANDARD_RHO = 6.4
+RESEARCH_STANDARD_RHO = 6.5
 RESEARCH_STANDARD_STEP_THRESHOLD = 12
 RESEARCH_STANDARD_STEP_PIVOT = 0.55
 RESEARCH_STANDARD_SIGMA_PIVOT = 0.48
@@ -69,6 +69,12 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
     return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
 
 
+def research_predictor_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
+    d_norm = d_cur.flatten(1).norm(dim=1)
+    prev_norm = prev_d_cur.flatten(1).norm(dim=1)
+    return (prev_norm / d_norm.clamp_min(1e-12)).clamp(0.0, 1.0)
+
+
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
     step_fraction = research_step_fractions(num_steps, device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
@@ -125,7 +131,9 @@ def research_sampler(
 
         predictor_d = d_cur
         if prev_d_cur is not None:
-            predictor_d = d_cur + step_predictor_mix[i] * (d_cur - prev_d_cur)
+            growth_gate = research_predictor_growth_gate(d_cur, prev_d_cur)
+            predictor_gain = step_predictor_mix[i] * growth_gate.view(-1, *([1] * (d_cur.ndim - 1)))
+            predictor_d = d_cur + predictor_gain * (d_cur - prev_d_cur)
         alpha = step_alpha[i]
         x_prime = x_hat + alpha * h * predictor_d
         t_prime = t_hat + alpha * h
