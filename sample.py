@@ -13,9 +13,8 @@ RESEARCH_STANDARD_STEP_PIVOT = 0.55
 RESEARCH_STANDARD_SIGMA_PIVOT = 0.48
 RESEARCH_STANDARD_ALPHA_SIGMA_START = 0.5
 RESEARCH_STANDARD_MAX_ALPHA = 0.96
-RESEARCH_STANDARD_PREDICTOR_START = 0.45
+RESEARCH_STANDARD_PREDICTOR_START = 0.4
 RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
-RESEARCH_STANDARD_PREDICTOR_CURVATURE_SCALE = 0.3
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -77,15 +76,6 @@ def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) ->
     return ratio.sqrt()
 
 
-def research_predictor_curvature_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
-    delta_rms = (d_cur - prev_d_cur).square().mean(dim=tuple(range(1, d_cur.ndim))).sqrt()
-    signal_rms = d_cur.square().mean(dim=tuple(range(1, d_cur.ndim))).sqrt().clamp_min(1e-12)
-    curvature_ratio = delta_rms / signal_rms
-    return RESEARCH_STANDARD_PREDICTOR_CURVATURE_SCALE / (
-        RESEARCH_STANDARD_PREDICTOR_CURVATURE_SCALE + curvature_ratio
-    )
-
-
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
     step_fraction = research_step_fractions(num_steps, device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
@@ -144,8 +134,7 @@ def research_sampler(
         alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
-            curvature_gate = research_predictor_curvature_gate(d_cur, prev_d_cur)
-            predictor_gain = step_predictor_mix[i] * (0.5 + 0.5 * growth_gate * curvature_gate)
+            predictor_gain = step_predictor_mix[i] * (0.5 + 0.5 * growth_gate)
             predictor_d = d_cur + predictor_gain.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
