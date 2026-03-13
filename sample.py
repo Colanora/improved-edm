@@ -17,6 +17,7 @@ RESEARCH_STANDARD_PREDICTOR_START = 0.30
 RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
+RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 1
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -97,7 +98,7 @@ def research_step_terminal_exact_heun(num_steps: int, device: torch.device) -> t
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
         return step_terminal_exact_heun
     terminal_end = num_steps - 1
-    terminal_start = max(0, terminal_end - RESEARCH_STANDARD_TERMINAL_HEUN_STAGES)
+    terminal_start = max(0, terminal_end - RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES)
     step_terminal_exact_heun[terminal_start:terminal_end] = True
     return step_terminal_exact_heun
 
