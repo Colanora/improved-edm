@@ -11,7 +11,7 @@ RESEARCH_STANDARD_RHO = 6.5
 RESEARCH_STANDARD_STEP_THRESHOLD = 12
 RESEARCH_STANDARD_STEP_PIVOT = 0.55
 RESEARCH_STANDARD_SIGMA_PIVOT = 0.48
-RESEARCH_STANDARD_ALPHA_SIGMA_START = 0.55
+RESEARCH_STANDARD_ALPHA_SIGMA_START = 0.5
 RESEARCH_STANDARD_MAX_ALPHA = 0.96
 RESEARCH_STANDARD_PREDICTOR_START = 0.45
 RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
@@ -67,6 +67,14 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
         return torch.zeros_like(step_fraction)
     late_mix = ((step_fraction - RESEARCH_STANDARD_PREDICTOR_START) / (1.0 - RESEARCH_STANDARD_PREDICTOR_START)).clamp(0.0, 1.0)
     return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
+
+
+def research_directional_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
+    delta = (d_cur - prev_d_cur).flatten(1)
+    d_flat = d_cur.flatten(1)
+    numerator = (d_flat * delta).sum(dim=1)
+    denominator = d_flat.norm(dim=1) * delta.norm(dim=1)
+    return (numerator / denominator.clamp_min(1e-12)).clamp(0.0, 1.0)
 
 
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
@@ -126,10 +134,15 @@ def research_sampler(
         predictor_d = d_cur
         if prev_d_cur is not None:
             predictor_d = d_cur + step_predictor_mix[i] * (d_cur - prev_d_cur)
-        alpha = step_alpha[i]
+        alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
+        if prev_d_cur is not None:
+            gate = research_directional_gate(d_cur, prev_d_cur)
+            alpha_flat = RESEARCH_ALPHA + gate * (step_alpha[i] - RESEARCH_ALPHA)
+        alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
-        t_prime = t_hat + alpha * h
-        denoised = net(x_prime, t_prime, class_labels).to(torch.float64)
+        t_prime_input = t_hat + alpha_flat * h
+        denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
+        t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
         d_prime = (x_prime - denoised) / t_prime
         x_next = x_hat + h * ((1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime)
         prev_d_cur = d_cur.detach()
