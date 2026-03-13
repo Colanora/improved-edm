@@ -16,6 +16,7 @@ RESEARCH_STANDARD_MAX_ALPHA = 0.96
 RESEARCH_STANDARD_PREDICTOR_START = 0.30
 RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
+RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -80,6 +81,17 @@ def research_step_correction_relax(num_steps: int, device: torch.device) -> torc
     return RESEARCH_STANDARD_MAX_CORRECTION_RELAX * late_mix
 
 
+def research_step_corrector_memory(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_corrector_memory = RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE * research_step_predictor_mix(num_steps, device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return step_corrector_memory
+    terminal_end = num_steps - 1
+    terminal_start = max(0, terminal_end - RESEARCH_STANDARD_TERMINAL_HEUN_STAGES)
+    step_corrector_memory = step_corrector_memory.clone()
+    step_corrector_memory[terminal_start:terminal_end] = 0
+    return step_corrector_memory
+
+
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
@@ -122,7 +134,7 @@ def research_sampler(
     )
     step_alpha = research_step_alpha(num_steps, latents.device)
     step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
-    step_corrector_memory = RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE * step_predictor_mix
+    step_corrector_memory = research_step_corrector_memory(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
     prev_d_cur = None
     prev_d_prime = None
