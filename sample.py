@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import math
-
 import torch
 
 from sampler_protocol import SamplerOutput, edm_num_steps_for_heun, finalize_images
@@ -13,7 +11,6 @@ RESEARCH_STANDARD_RHO = 6.5
 RESEARCH_STANDARD_STEP_THRESHOLD = 12
 RESEARCH_STANDARD_STEP_PIVOT = 0.55
 RESEARCH_STANDARD_SIGMA_PIVOT = 0.50
-RESEARCH_STANDARD_BETA_EDGE_ANGLE = 0.5 * math.pi
 RESEARCH_STANDARD_ALPHA_SIGMA_START = 0.5
 RESEARCH_STANDARD_MAX_ALPHA = 0.96
 RESEARCH_STANDARD_PREDICTOR_START = 0.30
@@ -41,7 +38,6 @@ def research_step_fractions(num_steps: int, device: torch.device) -> torch.Tenso
     step_fraction = torch.linspace(0.0, 1.0, num_steps, dtype=torch.float64, device=device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
         return step_fraction
-    step_fraction = torch.sin(step_fraction * RESEARCH_STANDARD_BETA_EDGE_ANGLE).square()
     early = step_fraction <= RESEARCH_STANDARD_STEP_PIVOT
     early_scale = RESEARCH_STANDARD_SIGMA_PIVOT / RESEARCH_STANDARD_STEP_PIVOT
     late_scale = (1.0 - RESEARCH_STANDARD_SIGMA_PIVOT) / (1.0 - RESEARCH_STANDARD_STEP_PIVOT)
