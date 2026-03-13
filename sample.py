@@ -69,6 +69,14 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
     return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
 
 
+def research_directional_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
+    d_flat = d_cur.flatten(1)
+    prev_flat = prev_d_cur.flatten(1)
+    numerator = (d_flat * prev_flat).sum(dim=1)
+    denominator = d_flat.norm(dim=1) * prev_flat.norm(dim=1)
+    return (numerator / denominator.clamp_min(1e-12)).clamp(0.0, 1.0)
+
+
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
     step_fraction = research_step_fractions(num_steps, device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
@@ -126,10 +134,15 @@ def research_sampler(
         predictor_d = d_cur
         if prev_d_cur is not None:
             predictor_d = d_cur + step_predictor_mix[i] * (d_cur - prev_d_cur)
-        alpha = step_alpha[i]
+        alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
+        if prev_d_cur is not None:
+            gate = research_directional_gate(d_cur, prev_d_cur)
+            alpha_flat = RESEARCH_ALPHA + gate * (step_alpha[i] - RESEARCH_ALPHA)
+        alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
-        t_prime = t_hat + alpha * h
-        denoised = net(x_prime, t_prime, class_labels).to(torch.float64)
+        t_prime_input = t_hat + alpha_flat * h
+        denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
+        t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
         d_prime = (x_prime - denoised) / t_prime
         x_next = x_hat + h * ((1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime)
         prev_d_cur = d_cur.detach()
