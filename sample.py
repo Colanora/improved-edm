@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import torch
 
 from sampler_protocol import SamplerOutput, edm_num_steps_for_heun, finalize_images
@@ -18,6 +20,7 @@ RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
+RESEARCH_STANDARD_SCHEDULE_POWER = math.log(RESEARCH_STANDARD_SIGMA_PIVOT) / math.log(RESEARCH_STANDARD_STEP_PIVOT)
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -38,14 +41,7 @@ def research_step_fractions(num_steps: int, device: torch.device) -> torch.Tenso
     step_fraction = torch.linspace(0.0, 1.0, num_steps, dtype=torch.float64, device=device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
         return step_fraction
-    early = step_fraction <= RESEARCH_STANDARD_STEP_PIVOT
-    early_scale = RESEARCH_STANDARD_SIGMA_PIVOT / RESEARCH_STANDARD_STEP_PIVOT
-    late_scale = (1.0 - RESEARCH_STANDARD_SIGMA_PIVOT) / (1.0 - RESEARCH_STANDARD_STEP_PIVOT)
-    return torch.where(
-        early,
-        step_fraction * early_scale,
-        RESEARCH_STANDARD_SIGMA_PIVOT + (step_fraction - RESEARCH_STANDARD_STEP_PIVOT) * late_scale,
-    )
+    return step_fraction.pow(RESEARCH_STANDARD_SCHEDULE_POWER)
 
 
 def research_t_steps(
