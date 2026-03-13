@@ -1,0 +1,67 @@
+commit	sampler	split	frontier_score	fid_N5	fid_N9	fid_N11	fid_N13	peak_vram_mb	status	notes
+3de344c	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	Unable to load the EDM Inception detector for FID evaluation. Set SAMPLER_AUTORESEARCH_ALLOW_APPROX_FID=1 only for offline tests or local smoke runs.
+3de344c	euler	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	Unable to load the EDM Inception detector for FID evaluation. Set SAMPLER_AUTORESEARCH_ALLOW_APPROX_FID=1 only for offline tests or local smoke runs.
+3de344c	heun	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	Unable to load the EDM Inception detector for FID evaluation. Set SAMPLER_AUTORESEARCH_ALLOW_APPROX_FID=1 only for offline tests or local smoke runs.
+3de344c	euler	proxy	3.525254	73.1366	27.3235	20.7092	16.9454	2227.6	keep	
+3de344c	heun	proxy	4.112210	321.6985	42.3679	19.9704	11.6797	2230.3	keep	
+3de344c	research	proxy	2.607357	27.1601	10.5586	8.9748	7.6793	2228.0	keep	sigma-alpha baseline current-slot
+ad7430a	research	proxy	3.220628	28.9077	41.2732	17.5402	10.6070	2230.3	discard	sigma-aware alpha mechanism standard-only frontier-fail
+23570d9	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2228.0	keep	step-aware rho split tuning standard-targeted provisional keep
+ce00a1d	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2228.0	discard	late-step alpha taper mechanism standard-proxy regression
+2012b0d	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	late-ramp schedule warp tuning standard-targeted keep
+2012b0d	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	keep	late-ramp schedule warp tuning standard-targeted keep
+161c19d	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	late-step correction damping mechanism standard-proxy regression
+c42768b	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	late denoiser smoothing mechanism standard-proxy regression
+ff5e5ff	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	adaptive error-based damping mechanism standard-proxy regression
+599dc0b	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	predictor-momentum mechanism standard-targeted keep
+599dc0b	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	keep	predictor-momentum mechanism standard-targeted keep
+bf7cf21	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	sigma-aligned predictor ramp frontier-flat and standard-proxy neutral
+d9ee29e	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	late standard alpha lift provisional keep pending parent final
+d9ee29e	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	keep	late standard alpha lift provisional keep pending parent final
+8f51312	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	stronger late standard alpha lift confirm regression
+8f51312	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	discard	stronger late standard alpha lift confirm regression
+ef1c21f	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.0	discard	later stronger alpha lift confirm regression
+0ea6330	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	later predictor onset no standard-proxy gain
+584f96a	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	earlier predictor onset confirm regression
+584f96a	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	discard	earlier predictor onset confirm regression
+8a9e4b3	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	lower predictor momentum no standard-proxy gain
+ce3fce1	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	earlier alpha lift onset standard-qualified keep
+ce3fce1	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	keep	earlier alpha lift onset standard-qualified keep
+240bf7c	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	stronger early alpha lift provisional keep pending confirm
+d9ee29e	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	
+d9ee29e	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	keep	
+8f51312	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	
+8f51312	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	keep	
+ef1c21f	research	confirm	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	Unable to load the EDM Inception detector for FID evaluation. Set SAMPLER_AUTORESEARCH_ALLOW_APPROX_FID=1 only for offline tests or local smoke runs.
+ef1c21f	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.0	keep	
+0ea6330	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	
+584f96a	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	
+584f96a	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	keep	
+8a9e4b3	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	
+ce3fce1	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	
+ce3fce1	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	keep	
+240bf7c	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	third scalar-only alpha keep disallowed after neutral standard confirm
+240bf7c	research	confirm	2.323819	24.0138	7.5735	6.2126	4.9067	2230.3	discard	third scalar-only alpha keep disallowed after neutral standard confirm
+24ff371	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	curved late predictor ramp no frontier or standard-proxy gain
+04cc815	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	discard	directional predictor gate no frontier or standard-proxy gain
+1354cf2	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	alpha lift gated by slope alignment confirm-qualified working base
+1354cf2	research	confirm	2.323722	24.0109	7.5727	6.2115	4.9070	2230.3	keep	alpha lift gated by slope alignment confirm-qualified working base
+24ff371	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	
+04cc815	research	proxy	2.607408	27.1614	10.5596	8.9748	7.6796	2230.3	keep	
+1354cf2	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	
+1354cf2	research	confirm	2.323722	24.0109	7.5727	6.2115	4.9070	2230.3	keep	
+cc72733	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	softer alpha alignment gate no frontier or standard-proxy gain
+a4da4ad	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	smoothed alpha alignment gate no frontier or standard-proxy gain
+348be72	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	predictor gated by alpha alignment no frontier gain and standard-proxy regression
+a4da4ad	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	
+348be72	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	
+29bd164	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	slope-consistency alpha gate confirm-qualified working base
+29bd164	research	confirm	2.323722	24.0109	7.5727	6.2115	4.9070	2230.3	keep	slope-consistency alpha gate confirm-qualified working base
+683995d	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	earlier standard sigma pivot confirm regression
+683995d	research	confirm	2.323722	24.0109	7.5727	6.2115	4.9070	2230.3	discard	earlier standard sigma pivot confirm regression
+d4abe0b	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	parent 29bd164 missed final reset to ce3fce1
+1b287e1	research	proxy	2.607407	27.1618	10.5588	8.9758	7.6792	2230.3	discard	lower standard rho from champion base confirm regression
+732f600	research	proxy	2.607434	27.1635	10.5590	8.9746	7.6806	2230.3	discard	predictor growth damping no frontier or standard-proxy gain
+732f600	research	proxy	2.607434	27.1635	10.5590	8.9746	7.6806	2230.3	discard	predictor growth damping no frontier or standard-proxy gain
+140e2ea	research	proxy	2.607491	27.1648	10.5604	8.9741	7.6812	2230.3	keep	alpha growth gate confirm pending
+140e2ea	research	proxy	2.607491	27.1648	10.5604	8.9741	7.6812	2230.3	keep	

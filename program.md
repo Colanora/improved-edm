@@ -277,9 +277,9 @@ uv run run.py --sampler heun --split final --nfe 35 > heun_final_nfe35.log 2>&1
 Extract the metrics:
 
 ```bash
-grep "^fid_N\|^peak_vram_mb:" heun_proxy_nfe35.log
-grep "^fid_N\|^peak_vram_mb:" heun_confirm_nfe35.log
-grep "^fid_N\|^peak_vram_mb:" heun_final_nfe35.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" heun_proxy_nfe35.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" heun_confirm_nfe35.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" heun_final_nfe35.log
 ```
 
 Treat `heun_final_nfe35.log` as the local source of truth.
@@ -307,10 +307,10 @@ uv run run.py --sampler research --split final --nfe 35 > run_research_standard_
 Extract the metrics:
 
 ```bash
-grep "^frontier_score:\|^fid_N\|^peak_vram_mb:" run_research_frontier_proxy.log
-grep "^fid_N\|^peak_vram_mb:" run_research_standard_proxy.log
-grep "^fid_N\|^peak_vram_mb:" run_research_standard_confirm.log
-grep "^fid_N\|^peak_vram_mb:" run_research_standard_final.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_research_frontier_proxy.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_research_standard_proxy.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_research_standard_confirm.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_research_standard_final.log
 ```
 
 The unmodified `research` run is the baseline for the editable slot on both scoreboards.
@@ -355,7 +355,7 @@ uv run run.py --sampler research --split proxy > run_frontier_proxy.log 2>&1
 Read out:
 
 ```bash
-grep "^frontier_score:\|^fid_N\|^peak_vram_mb:" run_frontier_proxy.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_frontier_proxy.log
 ```
 
 ### Stage 2: standard proxy translation check
@@ -367,7 +367,7 @@ uv run run.py --sampler research --split proxy --nfe 35 > run_standard_proxy.log
 Read out:
 
 ```bash
-grep "^fid_N\|^peak_vram_mb:" run_standard_proxy.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_standard_proxy.log
 ```
 
 ### Stage 3: confirm only if Stage 1 or Stage 2 looks promising
@@ -380,8 +380,8 @@ uv run run.py --sampler research --split confirm --nfe 35 > run_standard_confirm
 Read out:
 
 ```bash
-grep "^frontier_score:\|^fid_N\|^peak_vram_mb:" run_frontier_confirm.log
-grep "^fid_N\|^peak_vram_mb:" run_standard_confirm.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_frontier_confirm.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_standard_confirm.log
 ```
 
 ### Stage 4: final standard challenge when promoted
@@ -393,7 +393,7 @@ uv run run.py --sampler research --split final --nfe 35 > run_standard_final.log
 Read out:
 
 ```bash
-grep "^fid_N\|^peak_vram_mb:" run_standard_final.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^fid_N\|^runtime_s:\|^peak_vram_mb:" run_standard_final.log
 ```
 
 Only Stage 4 can update the standard champion.
@@ -536,6 +536,33 @@ Rules:
 - `gap_vs_heun = fid - ref_heun_fid`,
 - negative is good,
 - do not call a result a win unless the `gap_vs_heun` improves or stays safely neutral.
+
+### Required timing fields in eval logs
+
+Every long-running evaluation log must expose timing fields immediately, not only at process exit.
+
+For `run.py` logs, require:
+
+- `start_time_utc`
+- `end_time_utc`
+- `runtime_s`
+- `nfe_<budget>_start_time_utc`
+- `nfe_<budget>_progress`
+- `nfe_<budget>_end_time_utc`
+- `nfe_<budget>_runtime_s`
+
+For `paper_eval.py` logs, require:
+
+- `start_time_utc`
+- `end_time_utc`
+- `runtime_s`
+- `block_<index>_start_time_utc`
+- `block_<index>_generate_runtime_s`
+- `block_<index>_fid_runtime_s`
+- `block_<index>_end_time_utc`
+- `block_<index>_runtime_s`
+
+If a run looks slow, inspect these timing fields before deciding it is hung.
 
 ---
 

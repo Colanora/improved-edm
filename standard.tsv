@@ -1,0 +1,53 @@
+commit	sampler	split	nfe	fid	ref_heun_fid	gap_vs_heun	status	notes
+3de344c	heun	proxy	35	6.7875	6.7875	0.0000	keep	local heun ref
+3de344c	research	proxy	35	6.8391	6.7875	0.0516	keep	baseline current-slot
+3de344c	heun	confirm	35	3.9988	3.9988	0.0000	keep	local heun ref
+3de344c	research	confirm	35	4.0365	3.9988	0.0377	keep	baseline current-slot
+ad7430a	research	proxy	35	6.7952	6.7875	0.0077	discard	sigma-aware alpha mechanism frontier-fail
+23570d9	research	proxy	35	6.8352	6.7875	0.0477	keep	step-aware rho split standard-targeted provisional keep
+23570d9	research	confirm	35	4.0391	3.9988	0.0403	keep	step-aware rho split confirm-neutral
+ce00a1d	research	proxy	35	6.8516	6.7875	0.0641	discard	late-step alpha taper standard-proxy regression
+2012b0d	research	proxy	35	6.8284	6.7875	0.0409	keep	late-ramp schedule warp standard-targeted keep
+2012b0d	research	confirm	35	4.0301	3.9988	0.0313	keep	late-ramp schedule warp standard-targeted keep
+161c19d	research	proxy	35	6.8484	6.7875	0.0609	discard	late-step correction damping standard-proxy regression
+c42768b	research	proxy	35	6.9253	6.7875	0.1378	discard	late denoiser smoothing standard-proxy regression
+ff5e5ff	research	proxy	35	6.8416	6.7875	0.0541	discard	adaptive error-based damping standard-proxy regression
+599dc0b	research	proxy	35	6.8109	6.7875	0.0234	keep	predictor-momentum standard-targeted keep
+599dc0b	research	confirm	35	4.0202	3.9988	0.0214	keep	predictor-momentum standard-targeted keep
+3de344c	heun	final	35	2.0066	2.0066	0.0000	keep	local heun ref
+bf7cf21	research	proxy	35	6.8115	6.7875	0.0240	discard	sigma-aligned predictor ramp no standard-proxy gain
+d9ee29e	research	proxy	35	6.7995	6.7875	0.0120	keep	late standard alpha lift keep
+d9ee29e	research	confirm	35	4.0184	3.9988	0.0196	keep	late standard alpha lift keep
+599dc0b	research	final	35	2.0264	2.0066	0.0198	keep	predictor-momentum final beats 2012b0d comparator
+8f51312	research	proxy	35	6.7960	6.7875	0.0085	discard	stronger late standard alpha lift confirm regression
+d9ee29e	research	final	35	2.0198	2.0066	0.0132	keep	late standard alpha lift final improves on 599dc0b
+8f51312	research	confirm	35	4.0204	3.9988	0.0216	discard	stronger late standard alpha lift confirm regression
+ef1c21f	research	proxy	35	6.7987	6.7875	0.0112	discard	later stronger alpha lift confirm regression
+ef1c21f	research	confirm	35	4.0202	3.9988	0.0214	discard	later stronger alpha lift confirm regression
+0ea6330	research	proxy	35	6.8029	6.7875	0.0154	discard	later predictor onset no standard-proxy gain
+584f96a	research	proxy	35	6.7991	6.7875	0.0116	discard	earlier predictor onset confirm regression
+584f96a	research	confirm	35	4.0194	3.9988	0.0206	discard	earlier predictor onset confirm regression
+8a9e4b3	research	proxy	35	6.8038	6.7875	0.0163	discard	lower predictor momentum no standard-proxy gain
+ce3fce1	research	proxy	35	6.7958	6.7875	0.0083	keep	earlier alpha lift onset standard-qualified keep
+ce3fce1	research	confirm	35	4.0187	3.9988	0.0199	keep	earlier alpha lift onset standard-qualified keep
+2012b0d	research	final	35	2.0403	2.0066	0.0337	discard	late-ramp schedule warp direct final comparator
+240bf7c	research	proxy	35	6.7947	6.7875	0.0072	discard	stronger early alpha lift confirm-neutral but third scalar-only alpha keep disallowed
+240bf7c	research	confirm	35	4.0198	3.9988	0.0210	discard	stronger early alpha lift confirm-neutral but third scalar-only alpha keep disallowed
+24ff371	research	proxy	35	6.8041	6.7875	0.0166	discard	curved late predictor ramp no standard-proxy gain
+04cc815	research	proxy	35	6.8106	6.7875	0.0231	discard	directional predictor gate no standard-proxy gain
+1354cf2	research	proxy	35	6.8111	6.7875	0.0236	keep	alpha lift gated by slope alignment confirm-qualified working base
+1354cf2	research	confirm	35	4.0200	3.9988	0.0212	keep	alpha lift gated by slope alignment confirm-qualified working base
+cc72733	research	proxy	35	6.8113	6.7875	0.0238	discard	softer alpha alignment gate no proxy gain
+a4da4ad	research	proxy	35	6.8111	6.7875	0.0236	discard	smoothed alpha alignment gate no proxy gain
+348be72	research	proxy	35	6.8209	6.7875	0.0334	discard	predictor gated by alpha alignment standard-proxy regression
+29bd164	research	proxy	35	6.7957	6.7875	0.0082	keep	slope-consistency alpha gate confirm-qualified working base
+683995d	research	proxy	35	6.7925	6.7875	0.0050	discard	earlier standard sigma pivot confirm regression
+29bd164	research	confirm	35	4.0181	3.9988	0.0193	keep	slope-consistency alpha gate confirm-qualified working base
+683995d	research	confirm	35	4.0222	3.9988	0.0234	discard	earlier standard sigma pivot confirm regression
+d4abe0b	research	proxy	35	6.7944	6.7875	0.0069	discard	parent 29bd164 missed final reset to ce3fce1
+29bd164	research	final	35	2.0190	2.0066	0.0124	discard	slope-consistency alpha gate final missed ce3fce1
+ce3fce1	research	final	35	2.0188	2.0066	0.0122	keep	earlier alpha lift onset final improves on d9ee29e
+1b287e1	research	proxy	35	6.7944	6.7875	0.0069	discard	lower standard rho from champion base confirm regression
+1b287e1	research	confirm	35	4.0207	3.9988	0.0219	discard	lower standard rho from champion base confirm regression
+732f600	research	proxy	35	6.7958	6.7875	0.0083	discard	predictor growth damping no standard-proxy gain
+140e2ea	research	proxy	35	6.7954	6.7875	0.0079	keep	alpha growth gate confirm pending

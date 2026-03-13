@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -43,6 +44,14 @@ def resolve_device(value: str) -> torch.device:
     if value:
         return torch.device(value)
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def log_field(name: str, value: object) -> None:
+    print(f"{name}: {value}", flush=True)
 
 
 def current_commit() -> str:
@@ -90,8 +99,13 @@ def evaluate_sampler(
     ref_mu, ref_sigma = load_ref_stats(str(ref_path))
     fid_by_nfe: dict[int, float] = {}
     commit = current_commit()
+    total_images = len(seeds)
+    total_batches = max((total_images + batch_size - 1) // batch_size, 1)
+    progress_interval = max(total_batches // 4, 1)
 
     for nfe in nfes:
+        nfe_start = time.perf_counter()
+        log_field(f"nfe_{nfe}_start_time_utc", utc_now_iso())
         sampler = BUILTIN_SAMPLERS[sampler_name]()
         feature_sum = None
         feature_sum_outer = None
@@ -99,7 +113,7 @@ def evaluate_sampler(
         last_trace = None
         preview_images = None
 
-        for batch_seeds in batched(seeds, batch_size):
+        for batch_index, batch_seeds in enumerate(batched(seeds, batch_size), start=1):
             latents = latent_batch_from_seeds(batch_seeds, adapter.image_shape(), device=device)
             cfg = SamplerConfig(
                 nfe=nfe,
@@ -127,11 +141,25 @@ def evaluate_sampler(
             if preview_images is None:
                 preview_images = images[:64].cpu()
             last_trace = output.trace
+            if (
+                batch_index == 1
+                or batch_index == total_batches
+                or batch_index % progress_interval == 0
+            ):
+                processed_images = min(batch_index * batch_size, total_images)
+                elapsed_s = time.perf_counter() - nfe_start
+                log_field(
+                    f"nfe_{nfe}_progress",
+                    f"{processed_images}/{total_images} images ({batch_index}/{total_batches} batches) elapsed_s={elapsed_s:.1f}",
+                )
 
         mu = feature_sum / feature_count
         sigma = (feature_sum_outer - feature_count * torch.outer(mu, mu)) / max(feature_count - 1, 1)
         fid = frechet_distance(mu.numpy(), sigma.numpy(), ref_mu, ref_sigma)
         fid_by_nfe[nfe] = float(fid)
+        log_field(f"fid_N{nfe}", f"{fid_by_nfe[nfe]:.4f}")
+        log_field(f"nfe_{nfe}_end_time_utc", utc_now_iso())
+        log_field(f"nfe_{nfe}_runtime_s", f"{time.perf_counter() - nfe_start:.1f}")
 
         if save_previews and preview_images is not None:
             save_preview_grid(
@@ -196,13 +224,13 @@ def print_summary(
     runtime_s: float,
     peak_vram_mb: float,
 ) -> None:
-    print(f"sampler: {sampler}")
-    print(f"split: {split}")
-    print(f"frontier_score: {frontier_score:.6f}")
+    print(f"sampler: {sampler}", flush=True)
+    print(f"split: {split}", flush=True)
+    print(f"frontier_score: {frontier_score:.6f}", flush=True)
     for nfe in sorted(fid_by_nfe):
-        print(f"fid_N{nfe}: {fid_by_nfe[nfe]:.4f}")
-    print(f"runtime_s: {runtime_s:.1f}")
-    print(f"peak_vram_mb: {peak_vram_mb:.1f}")
+        print(f"fid_N{nfe}: {fid_by_nfe[nfe]:.4f}", flush=True)
+    print(f"runtime_s: {runtime_s:.1f}", flush=True)
+    print(f"peak_vram_mb: {peak_vram_mb:.1f}", flush=True)
 
 
 def main() -> int:
@@ -216,6 +244,14 @@ def main() -> int:
     commit = current_commit()
 
     start = time.perf_counter()
+    log_field("start_time_utc", utc_now_iso())
+    log_field("commit", commit)
+    log_field("sampler", args.sampler)
+    log_field("split", args.split)
+    log_field("nfes", ",".join(str(nfe) for nfe in nfes))
+    log_field("num_images", split_size)
+    log_field("batch_size", args.batch_size)
+    log_field("device", str(device))
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
 
@@ -249,6 +285,7 @@ def main() -> int:
             status=args.status,
             notes=args.notes,
         )
+        log_field("end_time_utc", utc_now_iso())
         print_summary(
             sampler=args.sampler,
             split=args.split,
@@ -259,6 +296,8 @@ def main() -> int:
         )
         return 0
     except Exception as exc:
+        log_field("end_time_utc", utc_now_iso())
+        log_field("runtime_s", f"{time.perf_counter() - start:.1f}")
         append_result_row(
             commit=commit,
             sampler=args.sampler,
