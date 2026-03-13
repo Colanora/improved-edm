@@ -151,8 +151,7 @@ def research_sampler(
         relax_flat = torch.zeros_like(alpha_flat)
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
-            predictor_gain = step_predictor_mix[i] * (0.5 + 0.5 * growth_gate)
-            predictor_d = d_cur + predictor_gain.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
+            predictor_d = d_cur
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
             memory_flat = torch.full_like(alpha_flat, float(step_corrector_memory[i]))
             relax_flat = step_correction_relax[i] * (1.0 - growth_gate)
