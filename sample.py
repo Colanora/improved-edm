@@ -73,7 +73,7 @@ def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) ->
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
     ratio = (prev_norm / d_norm.clamp_min(1e-12)).clamp(0.0, 1.0)
-    return 0.5 + 0.5 * ratio.sqrt()
+    return ratio.sqrt()
 
 
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
@@ -131,11 +131,11 @@ def research_sampler(
             continue
 
         predictor_d = d_cur
-        if prev_d_cur is not None:
-            predictor_d = d_cur + step_predictor_mix[i] * (d_cur - prev_d_cur)
         alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
+            predictor_gain = step_predictor_mix[i] * (0.5 + 0.5 * growth_gate)
+            predictor_d = d_cur + predictor_gain.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
