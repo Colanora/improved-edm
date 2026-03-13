@@ -18,6 +18,7 @@ RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
+RESEARCH_STANDARD_LINEAR_MULTISTEP_ALPHA = 1.0
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -143,6 +144,27 @@ def research_sampler(
 
         if i == num_steps - 1:
             x_next = x_euler
+            continue
+
+        if num_steps >= RESEARCH_STANDARD_STEP_THRESHOLD:
+            alpha_flat = torch.full(
+                (d_cur.shape[0],),
+                RESEARCH_STANDARD_LINEAR_MULTISTEP_ALPHA,
+                dtype=torch.float64,
+                device=d_cur.device,
+            )
+            predictor_d = d_cur
+            if prev_d_cur is not None:
+                predictor_d = 1.5 * d_cur - 0.5 * prev_d_cur
+            alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+            x_prime = x_hat + alpha * h * predictor_d
+            t_prime_input = t_hat + alpha_flat * h
+            denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
+            t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
+            d_prime = (x_prime - denoised) / t_prime
+            x_next = x_hat + h * (0.5 * d_cur + 0.5 * d_prime)
+            prev_d_cur = d_cur.detach()
+            prev_d_prime = d_prime.detach()
             continue
 
         predictor_d = d_cur
