@@ -92,6 +92,16 @@ def research_step_corrector_memory(num_steps: int, device: torch.device) -> torc
     return step_corrector_memory
 
 
+def research_step_terminal_exact_heun(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_terminal_exact_heun = torch.zeros(num_steps, dtype=torch.bool, device=device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return step_terminal_exact_heun
+    terminal_end = num_steps - 1
+    terminal_start = max(0, terminal_end - RESEARCH_STANDARD_TERMINAL_HEUN_STAGES)
+    step_terminal_exact_heun[terminal_start:terminal_end] = True
+    return step_terminal_exact_heun
+
+
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
@@ -135,6 +145,7 @@ def research_sampler(
     step_alpha = research_step_alpha(num_steps, latents.device)
     step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
     step_corrector_memory = research_step_corrector_memory(num_steps, latents.device)
+    step_terminal_exact_heun = research_step_terminal_exact_heun(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
     prev_d_cur = None
     prev_d_prime = None
@@ -167,7 +178,10 @@ def research_sampler(
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
             memory_flat = torch.full_like(alpha_flat, float(step_corrector_memory[i]))
             relax_flat = step_correction_relax[i] * (1.0 - growth_gate)
-            if float(step_corrector_memory[i]) == 0.0:
+            if bool(step_terminal_exact_heun[i]):
+                alpha_flat = torch.ones_like(alpha_flat)
+                relax_flat = torch.zeros_like(relax_flat)
+            elif float(step_corrector_memory[i]) == 0.0:
                 relax_flat = torch.zeros_like(relax_flat)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
