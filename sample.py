@@ -11,7 +11,9 @@ RESEARCH_STANDARD_RHO = 6.5
 RESEARCH_STANDARD_STEP_THRESHOLD = 12
 RESEARCH_STANDARD_STEP_PIVOT = 0.55
 RESEARCH_STANDARD_SIGMA_PIVOT = 0.48
-RESEARCH_STANDARD_PREDICTOR_START = 0.45
+RESEARCH_STANDARD_ALPHA_SIGMA_START = 0.5
+RESEARCH_STANDARD_MAX_ALPHA = 0.96
+RESEARCH_STANDARD_PREDICTOR_START = 0.5
 RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 
 
@@ -67,6 +69,21 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
     return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
 
 
+def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
+    d_norm = d_cur.flatten(1).norm(dim=1)
+    prev_norm = prev_d_cur.flatten(1).norm(dim=1)
+    ratio = (prev_norm / d_norm.clamp_min(1e-12)).clamp(0.0, 1.0)
+    return ratio.sqrt()
+
+
+def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_fraction = research_step_fractions(num_steps, device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return torch.full_like(step_fraction, RESEARCH_ALPHA)
+    late_mix = ((step_fraction - RESEARCH_STANDARD_ALPHA_SIGMA_START) / (1.0 - RESEARCH_STANDARD_ALPHA_SIGMA_START)).clamp(0.0, 1.0)
+    return RESEARCH_ALPHA + late_mix * (RESEARCH_STANDARD_MAX_ALPHA - RESEARCH_ALPHA)
+
+
 def research_sampler(
     net,
     latents,
@@ -92,6 +109,7 @@ def research_sampler(
         device=latents.device,
         round_sigma=net.round_sigma,
     )
+    step_alpha = research_step_alpha(num_steps, latents.device)
     step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
     prev_d_cur = None
 
@@ -115,11 +133,17 @@ def research_sampler(
         predictor_d = d_cur
         if prev_d_cur is not None:
             predictor_d = d_cur + step_predictor_mix[i] * (d_cur - prev_d_cur)
-        x_prime = x_hat + RESEARCH_ALPHA * h * predictor_d
-        t_prime = t_hat + RESEARCH_ALPHA * h
-        denoised = net(x_prime, t_prime, class_labels).to(torch.float64)
+        alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
+        if prev_d_cur is not None:
+            growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
+            alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
+        alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+        x_prime = x_hat + alpha * h * predictor_d
+        t_prime_input = t_hat + alpha_flat * h
+        denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
+        t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
         d_prime = (x_prime - denoised) / t_prime
-        x_next = x_hat + h * ((1 - 0.5 / RESEARCH_ALPHA) * d_cur + 0.5 / RESEARCH_ALPHA * d_prime)
+        x_next = x_hat + h * ((1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime)
         prev_d_cur = d_cur.detach()
 
     return x_next
