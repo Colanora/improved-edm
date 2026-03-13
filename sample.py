@@ -69,7 +69,7 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
     return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
 
 
-def research_predictor_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
+def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
     return (prev_norm / d_norm.clamp_min(1e-12)).clamp(0.0, 1.0)
@@ -131,13 +131,16 @@ def research_sampler(
 
         predictor_d = d_cur
         if prev_d_cur is not None:
-            growth_gate = research_predictor_growth_gate(d_cur, prev_d_cur)
-            predictor_gain = step_predictor_mix[i] * growth_gate.view(-1, *([1] * (d_cur.ndim - 1)))
-            predictor_d = d_cur + predictor_gain * (d_cur - prev_d_cur)
-        alpha = step_alpha[i]
+            predictor_d = d_cur + step_predictor_mix[i] * (d_cur - prev_d_cur)
+        alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
+        if prev_d_cur is not None:
+            growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
+            alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
+        alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
-        t_prime = t_hat + alpha * h
-        denoised = net(x_prime, t_prime, class_labels).to(torch.float64)
+        t_prime_input = t_hat + alpha_flat * h
+        denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
+        t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
         d_prime = (x_prime - denoised) / t_prime
         x_next = x_hat + h * ((1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime)
         prev_d_cur = d_cur.detach()
