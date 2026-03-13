@@ -170,27 +170,30 @@ def research_sampler(
             continue
 
         predictor_d = d_cur
-        alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
-        memory_flat = torch.zeros_like(alpha_flat)
-        relax_flat = torch.zeros_like(alpha_flat)
+        predictor_alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
+        corrector_alpha_flat = predictor_alpha_flat.clone()
+        memory_flat = torch.zeros_like(predictor_alpha_flat)
+        relax_flat = torch.zeros_like(predictor_alpha_flat)
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
             predictor_d = d_cur
-            alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
-            memory_flat = torch.full_like(alpha_flat, float(step_corrector_memory[i]))
+            predictor_alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
+            corrector_alpha_flat = predictor_alpha_flat.clone()
+            memory_flat = torch.full_like(predictor_alpha_flat, float(step_corrector_memory[i]))
             relax_flat = step_correction_relax[i] * (1.0 - growth_gate)
             if bool(step_terminal_exact_heun[i]):
-                alpha_flat = torch.ones_like(alpha_flat)
+                predictor_alpha_flat = torch.ones_like(predictor_alpha_flat)
                 relax_flat = torch.zeros_like(relax_flat)
             elif float(step_corrector_memory[i]) == 0.0:
                 relax_flat = torch.zeros_like(relax_flat)
-        alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
-        x_prime = x_hat + alpha * h * predictor_d
-        t_prime_input = t_hat + alpha_flat * h
+        predictor_alpha = predictor_alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+        corrector_alpha = corrector_alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+        x_prime = x_hat + predictor_alpha * h * predictor_d
+        t_prime_input = t_hat + predictor_alpha_flat * h
         denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
         t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
         d_prime = (x_prime - denoised) / t_prime
-        corrected_slope = (1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime
+        corrected_slope = (1 - 0.5 / corrector_alpha) * d_cur + 0.5 / corrector_alpha * d_prime
         if prev_d_prime is not None:
             memory = memory_flat.view(-1, *([1] * (d_cur.ndim - 1)))
             corrected_slope = corrected_slope + memory * (d_prime - prev_d_prime)
