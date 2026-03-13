@@ -168,7 +168,6 @@ def research_sampler(
             memory_flat = torch.full_like(alpha_flat, float(step_corrector_memory[i]))
             relax_flat = step_correction_relax[i] * (1.0 - growth_gate)
             if float(step_corrector_memory[i]) == 0.0:
-                alpha_flat = torch.ones_like(alpha_flat)
                 relax_flat = torch.zeros_like(relax_flat)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
