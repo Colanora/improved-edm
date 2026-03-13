@@ -1,0 +1,10 @@
+commit	sampler	target	steps	gpus	seed_block_0	seed_block_1	seed_block_2	fid_min	runtime_s	checkpoint	ref
+d71176c	heun	uncond	18	8	1.9595	1.9996	2.0158	1.9595	1673.2	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
+d71176c	research	uncond	18	8	1.9714	2.0153	2.0282	1.9714	1673.9	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
+22ae9db	research	uncond	18	8	1.9713	2.0152	2.0284	1.9713	1677.7	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
+1212e39	research	uncond	18	8	1.9713	2.0151	2.0283	1.9713	1674.5	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
+592209c	research	uncond	18	8	1.9712	2.0151	2.0283	1.9712	1678.2	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
+0ee22e7	research	uncond	18	8	1.9708	2.0142	2.0283	1.9708	1674.7	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
+99f4caf	research	uncond	18	6	1.9706	2.0138	2.0284	1.9706	2572.6	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
+82b037a	research	uncond	18	7	1.9702	2.0135	2.0288	1.9702	1621.1	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
+fdfc1f9	research	uncond	18	7	1.9702	2.0135	2.0288	1.9702	1406.8	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
