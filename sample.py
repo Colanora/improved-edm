@@ -15,6 +15,7 @@ RESEARCH_STANDARD_ALPHA_SIGMA_START = 0.5
 RESEARCH_STANDARD_MAX_ALPHA = 0.96
 RESEARCH_STANDARD_PREDICTOR_START = 0.30
 RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
+RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -121,8 +122,10 @@ def research_sampler(
     )
     step_alpha = research_step_alpha(num_steps, latents.device)
     step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
+    step_corrector_memory = RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE * step_predictor_mix
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
     prev_d_cur = None
+    prev_d_prime = None
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -144,12 +147,14 @@ def research_sampler(
 
         predictor_d = d_cur
         alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
+        memory_flat = torch.zeros_like(alpha_flat)
         relax_flat = torch.zeros_like(alpha_flat)
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
             predictor_gain = step_predictor_mix[i] * (0.5 + 0.5 * growth_gate)
             predictor_d = d_cur + predictor_gain.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
+            memory_flat = step_corrector_memory[i] * growth_gate
             relax_flat = step_correction_relax[i] * (1.0 - growth_gate)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
@@ -157,10 +162,15 @@ def research_sampler(
         denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
         t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
         d_prime = (x_prime - denoised) / t_prime
-        x_heun = x_hat + h * ((1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime)
+        corrected_slope = (1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime
+        if prev_d_prime is not None:
+            memory = memory_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+            corrected_slope = corrected_slope + memory * (d_prime - prev_d_prime)
+        x_heun = x_hat + h * corrected_slope
         relax = relax_flat.view(-1, *([1] * (x_heun.ndim - 1)))
         x_next = x_heun + relax * (x_euler - x_heun)
         prev_d_cur = d_cur.detach()
+        prev_d_prime = d_prime.detach()
 
     return x_next
 
