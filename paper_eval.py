@@ -6,6 +6,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
@@ -77,6 +78,14 @@ def current_commit() -> str:
         return "nogit"
     commit = completed.stdout.strip()
     return commit or "nogit"
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def log_field(name: str, value: object) -> None:
+    print(f"{name}: {value}", flush=True)
 
 
 def seed_blocks(*, seed_start: int, repeats: int, block_size: int) -> list[SeedBlock]:
@@ -167,11 +176,21 @@ def build_fid_command(
     ]
 
 
-def run_command(command: list[str], *, dry_run: bool) -> subprocess.CompletedProcess[str] | None:
-    print("$", " ".join(command))
+def run_command(
+    command: list[str],
+    *,
+    dry_run: bool,
+    label: str,
+) -> subprocess.CompletedProcess[str] | None:
+    log_field(f"{label}_command", " ".join(command))
+    log_field(f"{label}_start_time_utc", utc_now_iso())
     if dry_run:
         return None
-    return subprocess.run(command, cwd=REPO_ROOT, check=True, capture_output=True, text=True)
+    start = time.perf_counter()
+    completed = subprocess.run(command, cwd=REPO_ROOT, check=True, capture_output=True, text=True)
+    log_field(f"{label}_end_time_utc", utc_now_iso())
+    log_field(f"{label}_runtime_s", f"{time.perf_counter() - start:.1f}")
+    return completed
 
 
 def parse_fid(stdout: str) -> float:
@@ -268,8 +287,18 @@ def main() -> int:
     blocks = seed_blocks(seed_start=args.seed_start, repeats=args.repeats, block_size=args.block_size)
     block_fids: list[float] = []
     start = time.perf_counter()
+    log_field("start_time_utc", utc_now_iso())
+    log_field("commit", current_commit())
+    log_field("sampler", args.sampler)
+    log_field("target", args.target)
+    log_field("steps", args.steps)
+    log_field("gpus", args.gpus)
 
-    for block in blocks:
+    for index, block in enumerate(blocks):
+        block_label = f"block_{index}"
+        block_start = time.perf_counter()
+        log_field(f"{block_label}_start_time_utc", utc_now_iso())
+        log_field(f"{block_label}_seeds", block.as_cli_value())
         block_dir = output_root / f"seeds_{block.as_label()}"
         generate_command = build_generate_command(
             python_executable=args.python,
@@ -290,15 +319,19 @@ def main() -> int:
             batch_size=args.batch_size,
             num_expected=args.block_size,
         )
-        generate_result = run_command(generate_command, dry_run=args.dry_run)
-        fid_result = run_command(fid_command, dry_run=args.dry_run)
+        generate_result = run_command(generate_command, dry_run=args.dry_run, label=f"{block_label}_generate")
+        fid_result = run_command(fid_command, dry_run=args.dry_run, label=f"{block_label}_fid")
         if args.dry_run:
             continue
         if generate_result is not None and generate_result.stdout.strip():
-            print(generate_result.stdout.strip())
+            print(generate_result.stdout.strip(), flush=True)
         if fid_result is not None and fid_result.stdout.strip():
-            print(fid_result.stdout.strip())
-            block_fids.append(parse_fid(fid_result.stdout))
+            print(fid_result.stdout.strip(), flush=True)
+            fid_value = parse_fid(fid_result.stdout)
+            block_fids.append(fid_value)
+            log_field(f"fid_block_{index}", f"{fid_value:.4f}")
+        log_field(f"{block_label}_end_time_utc", utc_now_iso())
+        log_field(f"{block_label}_runtime_s", f"{time.perf_counter() - block_start:.1f}")
 
     if args.dry_run:
         return 0
@@ -315,13 +348,14 @@ def main() -> int:
         checkpoint=checkpoint,
         ref=ref,
     )
-    print(f"sampler: {args.sampler}")
-    print(f"target: {args.target}")
-    print(f"steps: {args.steps}")
+    log_field("end_time_utc", utc_now_iso())
+    print(f"sampler: {args.sampler}", flush=True)
+    print(f"target: {args.target}", flush=True)
+    print(f"steps: {args.steps}", flush=True)
     for index, fid in enumerate(block_fids):
-        print(f"fid_block_{index}: {fid:.4f}")
-    print(f"fid_min: {min(block_fids):.4f}")
-    print(f"runtime_s: {runtime_s:.1f}")
+        print(f"fid_block_{index}: {fid:.4f}", flush=True)
+    print(f"fid_min: {min(block_fids):.4f}", flush=True)
+    print(f"runtime_s: {runtime_s:.1f}", flush=True)
     return 0
 
 

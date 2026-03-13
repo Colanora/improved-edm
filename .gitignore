@@ -22,3 +22,10 @@ results.tsv
 paper_results.tsv
 artifacts/paper_eval/*
 artifacts/manual_eval/*
+agent_watchdog.sh
+*.log
+# Nested experiment logs live under artifacts/logs.
+artifacts/logs/**/*.log
+artifacts/logs/**/*.out
+artifacts/logs/**/*.err
+artifacts/paper_eval_candidates/*

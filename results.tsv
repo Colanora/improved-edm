@@ -64,4 +64,37 @@ d4abe0b	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	par
 732f600	research	proxy	2.607434	27.1635	10.5590	8.9746	7.6806	2230.3	discard	predictor growth damping no frontier or standard-proxy gain
 732f600	research	proxy	2.607434	27.1635	10.5590	8.9746	7.6806	2230.3	discard	predictor growth damping no frontier or standard-proxy gain
 140e2ea	research	proxy	2.607491	27.1648	10.5604	8.9741	7.6812	2230.3	keep	alpha growth gate confirm pending
+140e2ea	research	confirm	2.323761	24.0154	7.5724	6.2109	4.9071	2230.3	keep	alpha growth gate confirm-qualified working base
 140e2ea	research	proxy	2.607491	27.1648	10.5604	8.9741	7.6812	2230.3	keep	
+140e2ea	research	confirm	2.323761	24.0154	7.5724	6.2109	4.9071	2230.3	keep	
+53e682d	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	softer alpha growth gate confirm pending
+53e682d	research	confirm	2.323722	24.0109	7.5727	6.2115	4.9070	2230.3	keep	softer alpha growth gate confirm-qualified working base
+53e682d	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	
+53e682d	research	confirm	2.323722	24.0109	7.5727	6.2115	4.9070	2230.3	keep	
+222b14b	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	upward-biased alpha growth gate no standard-proxy gain
+fac7f7a	research	proxy	2.607398	27.1655	10.5580	8.9735	7.6801	2230.3	discard	coupled predictor growth gate no frontier or standard-proxy gain
+e057fff	research	proxy	2.607419	27.1624	10.5590	8.9755	7.6796	2230.3	keep	late correction relax on slope growth standard-proxy improvement
+288b117	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.0	discard	growth-gated denoiser smoothing no frontier or standard-proxy gain
+e057fff	research	confirm	2.323705	24.0154	7.5712	6.2109	4.9068	2230.3	keep	late correction relax on slope growth final pending
+fac7f7a	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	5
+fac7f7a	research	proxy	2.607398	27.1655	10.5580	8.9735	7.6801	2230.3	keep	
+e057fff	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	5
+e057fff	research	proxy	2.607419	27.1624	10.5590	8.9755	7.6796	2230.3	keep	
+288b117	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	5
+288b117	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.0	keep	
+e057fff	research	confirm	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	5
+e057fff	research	confirm	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	5
+e057fff	research	confirm	2.323705	24.0154	7.5712	6.2109	4.9068	2230.3	keep	
+ab1f360	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	5
+ab1f360	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	error-ratio late relax standard-proxy regression
+0585f74	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	5
+0585f74	research	proxy	2.607383	27.1618	10.5580	8.9739	7.6813	2230.3	keep	
+f96d5e5	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	later correction relax onset confirm pending
+0ad0e15	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	stronger correction relax cap confirm pending
+0585f74	research	confirm	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	5
+0585f74	research	confirm	2.323767	24.0142	7.5720	6.2120	4.9072	2230.3	discard	dominated by f96d5e5 at confirm
+f96d5e5	research	confirm	2.323722	24.0109	7.5727	6.2115	4.9070	2230.3	keep	later correction relax onset promoted to final
+0ad0e15	research	confirm	2.323722	24.0109	7.5727	6.2115	4.9070	2230.3	discard	tied frontier but worse standard confirm than f96d5e5
+d26552d	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	curvature-gated predictor had no frontier gain and worse standard proxy
+b736d56	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	predictor ablation had no frontier gain and standard-proxy regression
+d70b8ad	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	combined later relax with curvature gate had no frontier gain

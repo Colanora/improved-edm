@@ -51,3 +51,24 @@ ce3fce1	research	final	35	2.0188	2.0066	0.0122	keep	earlier alpha lift onset fin
 1b287e1	research	confirm	35	4.0207	3.9988	0.0219	discard	lower standard rho from champion base confirm regression
 732f600	research	proxy	35	6.7958	6.7875	0.0083	discard	predictor growth damping no standard-proxy gain
 140e2ea	research	proxy	35	6.7954	6.7875	0.0079	keep	alpha growth gate confirm pending
+140e2ea	research	confirm	35	4.0179	3.9988	0.0191	keep	alpha growth gate final pending
+53e682d	research	proxy	35	6.7954	6.7875	0.0079	keep	softer alpha growth gate confirm pending
+53e682d	research	confirm	35	4.0178	3.9988	0.0190	keep	softer alpha growth gate final pending
+222b14b	research	proxy	35	6.7955	6.7875	0.0080	discard	upward-biased alpha growth gate no standard-proxy gain
+fac7f7a	research	proxy	35	6.7955	6.7875	0.0080	discard	coupled predictor growth gate no standard-proxy gain
+e057fff	research	proxy	35	6.7953	6.7875	0.0078	keep	late correction relax on slope growth confirm pending
+140e2ea	research	final	35	2.0188	2.0066	0.0122	discard	alpha growth gate matched ce3fce1 final no new champion
+288b117	research	proxy	35	6.7954	6.7875	0.0079	discard	growth-gated denoiser smoothing no standard-proxy gain
+e057fff	research	confirm	35	4.0179	3.9988	0.0191	keep	late correction relax on slope growth final pending
+53e682d	research	final	35	2.0188	2.0066	0.0122	discard	softer alpha growth gate matched ce3fce1 final no new champion
+ab1f360	research	proxy	35	6.8003	6.7875	0.0128	discard	error-ratio late relax standard-proxy regression
+0585f74	research	proxy	35	6.7954	6.7875	0.0079	keep	error-scaled correction relax confirm pending
+f96d5e5	research	proxy	35	6.7954	6.7875	0.0079	keep	later correction relax onset confirm pending
+0ad0e15	research	proxy	35	6.7954	6.7875	0.0079	keep	stronger correction relax cap confirm pending
+0585f74	research	confirm	35	4.0178	3.9988	0.0190	discard	dominated by f96d5e5 at confirm
+f96d5e5	research	confirm	35	4.0178	3.9988	0.0190	keep	later correction relax onset promoted to final
+0ad0e15	research	confirm	35	4.0179	3.9988	0.0191	discard	tied frontier but worse standard confirm than f96d5e5
+e057fff	research	final	35	2.0188	2.0066	0.0122	discard	late correction relax matched champion final no new base
+d26552d	research	proxy	35	6.8020	6.7954	0.0066	discard	curvature-gated predictor had no frontier gain and worse standard proxy
+b736d56	research	proxy	35	6.8118	6.7954	0.0164	discard	predictor ablation had no frontier gain and standard-proxy regression
+d70b8ad	research	proxy	35	6.8020	6.7954	0.0066	discard	combined later relax with curvature gate had no frontier gain
