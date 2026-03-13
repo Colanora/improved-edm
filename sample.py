@@ -72,7 +72,8 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
-    return (prev_norm / d_norm.clamp_min(1e-12)).clamp(0.0, 1.0)
+    ratio = (prev_norm / d_norm.clamp_min(1e-12)).clamp(0.0, 1.0)
+    return ratio.sqrt()
 
 
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
