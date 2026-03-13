@@ -18,6 +18,7 @@ RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
+RESEARCH_STANDARD_AB2_COEFFICIENT = 0.5
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -151,7 +152,8 @@ def research_sampler(
         relax_flat = torch.zeros_like(alpha_flat)
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
-            predictor_gain = step_predictor_mix[i] * (0.5 + 0.5 * growth_gate)
+            predictor_late_mix = step_predictor_mix[i] / RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM
+            predictor_gain = RESEARCH_STANDARD_AB2_COEFFICIENT * predictor_late_mix
             predictor_d = d_cur + predictor_gain.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
             memory_flat = torch.full_like(alpha_flat, float(step_corrector_memory[i]))
