@@ -72,3 +72,4 @@ e057fff	research	final	35	2.0188	2.0066	0.0122	discard	late correction relax mat
 d26552d	research	proxy	35	6.8020	6.7954	0.0066	discard	curvature-gated predictor had no frontier gain and worse standard proxy
 b736d56	research	proxy	35	6.8118	6.7954	0.0164	discard	predictor ablation had no frontier gain and standard-proxy regression
 d70b8ad	research	proxy	35	6.8020	6.7954	0.0066	discard	combined later relax with curvature gate had no frontier gain
+cbfd11a	research	proxy	35	6.7650	6.7875	-0.0225	keep	corrector-memory paper base improved proxy translation without frontier change
