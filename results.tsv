@@ -98,3 +98,4 @@ f96d5e5	research	confirm	2.323722	24.0109	7.5727	6.2115	4.9070	2230.3	keep	later
 d26552d	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	curvature-gated predictor had no frontier gain and worse standard proxy
 b736d56	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	predictor ablation had no frontier gain and standard-proxy regression
 d70b8ad	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	discard	combined later relax with curvature gate had no frontier gain
+e3508e3	research	proxy	2.607374	27.1588	10.5593	8.9742	7.6806	2230.3	keep	
