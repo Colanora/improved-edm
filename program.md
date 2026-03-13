@@ -80,6 +80,7 @@ If the local loop and the paper path disagree, trust the paper path.
 - `results.tsv` is the **exploration ledger**.
 - `standard.tsv` is the **local translation ledger**.
 - `paper_results.tsv` is the **claim ledger**.
+- `experiment_reports.tsv` is the **periodic narrative ledger**.
 
 Do **not** hard-code stale commit IDs or stale FID numbers in this file.
 Always derive the current champions from the ledgers that exist in the current checkout.
@@ -306,6 +307,61 @@ Record:
 - current commit
 - uncommitted diff status
 
+### Step 1.5: inspect GPU availability before expensive runs
+
+Before launching any proposed sampling or paper-path run, inspect current GPU usage.
+
+Minimum check:
+
+```bash
+nvidia-smi --query-gpu=index,name,memory.used,memory.total,utilization.gpu --format=csv,noheader
+```
+
+Rules:
+
+- if an evaluation command already supports multi-GPU execution, use **all currently idle GPUs** for sampling instead of defaulting to a single GPU,
+- prefer sharding the image generation workload across those idle GPUs,
+- do **not** edit frozen infrastructure just to add parallelism where the current command path does not support it,
+- if one backend fails on the available machine but another existing backend preserves the same sampling path, switch backends instead of falling back to single-GPU immediately,
+- log the actual GPU count used for each authoritative run.
+
+### Step 1.6: route redirected logs into `artifacts`
+
+Set:
+
+```bash
+LOG_DIR=artifacts/logs
+```
+
+Rules:
+
+- any shell-redirected stdout/stderr log (`> ... 2>&1`) must go under `artifacts/logs/` or a subdirectory of it,
+- do **not** create new repo-root `*.log` files,
+- prefer filenames that include the stage or commit when multiple candidates are active,
+- keep these redirected logs untracked.
+
+### Step 1.7: maintain periodic experiment reports
+
+Keep a tracked TSV report ledger at:
+
+- `experiment_reports.tsv`
+
+Schema:
+
+```text
+report_utc	run_count_since_last_report	working_base	trials_done	performance_change	observations	next_action	commit_note
+```
+
+Rules:
+
+- after every **5 completed evaluation runs**, append one detailed row,
+- count local proxy/confirm/final bundles and paper promotions as runs for this cadence,
+- if a paper promotion finishes before the 5-run boundary, append a report row immediately,
+- `trials_done` must summarize the candidate commits and outcomes since the previous report,
+- `performance_change` must record the observed metric deltas against the active local or paper references,
+- `observations` must capture mechanistic or empirical takeaways, even for negative results,
+- keep `experiment_reports.tsv` tracked in git and stage it into the next commit; if no code commit is imminent, make a dedicated notes commit so the report cadence is preserved.
+
 ### Step 2: ensure the ledgers exist or can be created
 
 Required ledgers:
@@ -313,12 +369,19 @@ Required ledgers:
 - `results.tsv`
 - `standard.tsv`
 - `paper_results.tsv`
+- `experiment_reports.tsv`
 
 `results.tsv` and `paper_results.tsv` have code-defined headers.
 If `standard.tsv` does not exist, create it with the existing sidecar schema:
 
 ```text
 commit	sampler	split	nfe	fid	ref_heun_fid	gap_vs_heun	status	notes
+```
+
+If `experiment_reports.tsv` does not exist, create it with this schema:
+
+```text
+report_utc	run_count_since_last_report	working_base	trials_done	performance_change	observations	next_action	commit_note
 ```
 
 ### Step 3: establish local Heun references if missing
@@ -332,17 +395,17 @@ BUNDLE_NFES=5,9,11,13,35
 Run:
 
 ```bash
-uv run run.py --sampler heun --split proxy   --nfe ${BUNDLE_NFES} > heun_proxy_bundle.log 2>&1
-uv run run.py --sampler heun --split confirm --nfe ${BUNDLE_NFES} > heun_confirm_bundle.log 2>&1
-uv run run.py --sampler heun --split final   --nfe ${BUNDLE_NFES} > heun_final_bundle.log 2>&1
+uv run run.py --sampler heun --split proxy   --nfe ${BUNDLE_NFES} > ${LOG_DIR}/heun_proxy_bundle.log 2>&1
+uv run run.py --sampler heun --split confirm --nfe ${BUNDLE_NFES} > ${LOG_DIR}/heun_confirm_bundle.log 2>&1
+uv run run.py --sampler heun --split final   --nfe ${BUNDLE_NFES} > ${LOG_DIR}/heun_final_bundle.log 2>&1
 ```
 
 Extract:
 
 ```bash
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N5:\|^fid_N9:\|^fid_N11:\|^fid_N13:\|^fid_N35:\|^runtime_s:\|^peak_vram_mb:" heun_proxy_bundle.log
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N5:\|^fid_N9:\|^fid_N11:\|^fid_N13:\|^fid_N35:\|^runtime_s:\|^peak_vram_mb:" heun_confirm_bundle.log
-grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N5:\|^fid_N9:\|^fid_N11:\|^fid_N13:\|^fid_N35:\|^runtime_s:\|^peak_vram_mb:" heun_final_bundle.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N5:\|^fid_N9:\|^fid_N11:\|^fid_N13:\|^fid_N35:\|^runtime_s:\|^peak_vram_mb:" ${LOG_DIR}/heun_proxy_bundle.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N5:\|^fid_N9:\|^fid_N11:\|^fid_N13:\|^fid_N35:\|^runtime_s:\|^peak_vram_mb:" ${LOG_DIR}/heun_confirm_bundle.log
+grep "^start_time_utc:\|^end_time_utc:\|^nfe_.*runtime_s:\|^frontier_score:\|^fid_N5:\|^fid_N9:\|^fid_N11:\|^fid_N13:\|^fid_N35:\|^runtime_s:\|^peak_vram_mb:" ${LOG_DIR}/heun_final_bundle.log
 ```
 
 Append the `fid_N35` values to `standard.tsv` as the local Heun references.
@@ -352,9 +415,9 @@ Append the `fid_N35` values to `standard.tsv` as the local Heun references.
 Run:
 
 ```bash
-uv run run.py --sampler research --split proxy   --nfe ${BUNDLE_NFES} > research_proxy_bundle.log 2>&1
-uv run run.py --sampler research --split confirm --nfe ${BUNDLE_NFES} > research_confirm_bundle.log 2>&1
-uv run run.py --sampler research --split final   --nfe ${BUNDLE_NFES} > research_final_bundle.log 2>&1
+uv run run.py --sampler research --split proxy   --nfe ${BUNDLE_NFES} > ${LOG_DIR}/research_proxy_bundle.log 2>&1
+uv run run.py --sampler research --split confirm --nfe ${BUNDLE_NFES} > ${LOG_DIR}/research_confirm_bundle.log 2>&1
+uv run run.py --sampler research --split final   --nfe ${BUNDLE_NFES} > ${LOG_DIR}/research_final_bundle.log 2>&1
 ```
 
 Extract the same fields and append the `fid_N35` rows to `standard.tsv`.
@@ -364,7 +427,7 @@ Extract the same fields and append the `fid_N35` rows to `standard.tsv`.
 Run the authoritative comparator at least once:
 
 ```bash
-uv run paper_eval.py --sampler heun --target uncond --steps 18 --gpus 1 > paper_heun_uncond_steps18.log 2>&1
+uv run paper_eval.py --sampler heun --target uncond --steps 18 --gpus 1 > ${LOG_DIR}/paper_heun_uncond_steps18.log 2>&1
 ```
 
 ### Step 6: establish the current paper research baseline if missing
@@ -372,7 +435,7 @@ uv run paper_eval.py --sampler heun --target uncond --steps 18 --gpus 1 > paper_
 Run:
 
 ```bash
-uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > paper_research_uncond_steps18.log 2>&1
+uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > ${LOG_DIR}/paper_research_uncond_steps18.log 2>&1
 ```
 
 Do **not** call a sampler a serious candidate if the paper comparator has never been established.
@@ -437,6 +500,7 @@ Rationale:
 - Record the full frontier row in `results.tsv` through `run.py`.
 - Record the `fid_N35` row in `standard.tsv` manually from the log.
 - Do **not** pretend that `results.tsv` alone contains the local standard evidence.
+- Before each bundle run, inspect GPU occupancy and place the run on an idle GPU instead of contending with active jobs.
 
 ---
 
@@ -455,19 +519,19 @@ This track is allowed to aim primarily at low NFE, but it still must obey transl
 #### Stage F1: proxy bundle
 
 ```bash
-uv run run.py --sampler research --split proxy --nfe ${BUNDLE_NFES} > run_proxy_bundle.log 2>&1
+uv run run.py --sampler research --split proxy --nfe ${BUNDLE_NFES} > ${LOG_DIR}/run_proxy_bundle.log 2>&1
 ```
 
 #### Stage F2: confirm bundle if proxy is promising
 
 ```bash
-uv run run.py --sampler research --split confirm --nfe ${BUNDLE_NFES} > run_confirm_bundle.log 2>&1
+uv run run.py --sampler research --split confirm --nfe ${BUNDLE_NFES} > ${LOG_DIR}/run_confirm_bundle.log 2>&1
 ```
 
 #### Stage F3: final bundle if promoted
 
 ```bash
-uv run run.py --sampler research --split final --nfe ${BUNDLE_NFES} > run_final_bundle.log 2>&1
+uv run run.py --sampler research --split final --nfe ${BUNDLE_NFES} > ${LOG_DIR}/run_final_bundle.log 2>&1
 ```
 
 #### Stage F4: paper path for the best frontier family only
@@ -475,7 +539,7 @@ uv run run.py --sampler research --split final --nfe ${BUNDLE_NFES} > run_final_
 If a frontier family remains simple and survives the translation gate, run:
 
 ```bash
-uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > paper_candidate.log 2>&1
+uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > ${LOG_DIR}/paper_candidate.log 2>&1
 ```
 
 ### B. `track=standard`
@@ -485,7 +549,7 @@ This track is allowed to be neutral on frontier as long as it improves the `NFE=
 #### Stage S1: proxy bundle
 
 ```bash
-uv run run.py --sampler research --split proxy --nfe ${BUNDLE_NFES} > run_proxy_bundle.log 2>&1
+uv run run.py --sampler research --split proxy --nfe ${BUNDLE_NFES} > ${LOG_DIR}/run_proxy_bundle.log 2>&1
 ```
 
 Judge primarily by `fid_N35`, secondarily by frontier sanity.
@@ -493,13 +557,13 @@ Judge primarily by `fid_N35`, secondarily by frontier sanity.
 #### Stage S2: confirm bundle if proxy is promising
 
 ```bash
-uv run run.py --sampler research --split confirm --nfe ${BUNDLE_NFES} > run_confirm_bundle.log 2>&1
+uv run run.py --sampler research --split confirm --nfe ${BUNDLE_NFES} > ${LOG_DIR}/run_confirm_bundle.log 2>&1
 ```
 
 #### Stage S3: final bundle when promoted
 
 ```bash
-uv run run.py --sampler research --split final --nfe ${BUNDLE_NFES} > run_final_bundle.log 2>&1
+uv run run.py --sampler research --split final --nfe ${BUNDLE_NFES} > ${LOG_DIR}/run_final_bundle.log 2>&1
 ```
 
 #### Stage S4: authoritative paper promotion
@@ -507,7 +571,7 @@ uv run run.py --sampler research --split final --nfe ${BUNDLE_NFES} > run_final_
 A local standard winner should be promoted quickly to the paper path:
 
 ```bash
-uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > paper_candidate.log 2>&1
+uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1 > ${LOG_DIR}/paper_candidate.log 2>&1
 ```
 
 ### C. `track=both`
@@ -691,6 +755,15 @@ Do not keep stacking provisional keeps without promoting one representative to `
 
 ## 17. Logging rules
 
+### Redirected shell logs
+
+Rules:
+
+- all redirected stdout/stderr logs must live under `artifacts/logs/`,
+- do **not** create new repo-root `*.log` files,
+- prefer commit-scoped or stage-scoped filenames,
+- treat these logs as disposable artifacts rather than tracked notes.
+
 ### `results.tsv`
 
 `run.py` writes the frontier ledger with this schema:
@@ -732,6 +805,24 @@ Rules:
 `paper_eval.py` writes the authoritative claim ledger.
 Do not mutate its schema.
 Use it exactly as produced by the code.
+When the paper path uses multi-GPU generation, ensure the recorded GPU count reflects the actual launch width.
+
+### `experiment_reports.tsv`
+
+Maintain the tracked periodic report ledger with this schema:
+
+```text
+report_utc	run_count_since_last_report	working_base	trials_done	performance_change	observations	next_action	commit_note
+```
+
+Rules:
+
+- append one row every 5 completed evaluation runs, or sooner when a paper promotion finishes,
+- summarize the candidate commits and outcomes since the previous report in `trials_done`,
+- describe the observed metric deltas versus the active local or paper references in `performance_change`,
+- use `observations` for mechanistic takeaways, negative evidence, and stability notes,
+- keep `next_action` concrete enough to guide the next experiment turn,
+- keep this file tracked and periodically committed.
 
 ---
 
@@ -739,7 +830,7 @@ Use it exactly as produced by the code.
 
 If a run crashes:
 
-1. inspect the last 50 log lines,
+1. inspect the last 50 log lines under `artifacts/logs/`,
 2. decide whether the crash is a trivial implementation bug or a bad idea,
 3. if trivial, fix once and rerun,
 4. if fundamentally unstable, mark it as `crash`, log it, revert to `working_base`, and move on.
@@ -771,8 +862,9 @@ LOOP FOREVER:
 15. if paper path wins, update `last_paper_keep` and `working_base`,
 16. if paper path fails, do not let the candidate replace a stronger base,
 17. log the result,
-18. retire dead families,
-19. continue.
+18. if the report cadence boundary is hit, append and commit `experiment_reports.tsv`,
+19. retire dead families,
+20. continue.
 
 Never run multiple unrelated mechanism changes in a single candidate commit.
 One idea per commit.
