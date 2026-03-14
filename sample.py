@@ -21,7 +21,6 @@ RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
 RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT = (3, 4)
 RESEARCH_STANDARD_LOCAL_DPM_SOLVER_STEPS_LEFT = (4,)
-RESEARCH_STANDARD_LOCAL_DPM_MAX_TRUST_SHRINK = 0.35
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -171,13 +170,6 @@ def research_local_unipc_corrector_slope(
     )
 
 
-def research_local_dpm_trust_shrink(d_cur: torch.Tensor, d_mid: torch.Tensor) -> torch.Tensor:
-    slope_error = (d_mid - d_cur).flatten(1).norm(dim=1)
-    slope_norm = d_cur.flatten(1).norm(dim=1).clamp_min(1e-12)
-    error_ratio = slope_error / slope_norm
-    return RESEARCH_STANDARD_LOCAL_DPM_MAX_TRUST_SHRINK * (error_ratio / (1.0 + error_ratio))
-
-
 def research_sampler(
     net,
     latents,
@@ -238,12 +230,9 @@ def research_sampler(
             x_mid = x_hat + (lambda_mid_sigma - t_hat) * d_cur
             denoised = net(x_mid, lambda_mid_sigma, class_labels).to(torch.float64)
             d_mid = (x_mid - denoised) / lambda_mid_sigma
-            trust_shrink_flat = research_local_dpm_trust_shrink(d_cur, d_mid)
-            trust_shrink = trust_shrink_flat.view(-1, *([1] * (d_cur.ndim - 1)))
-            d_trust = d_mid + trust_shrink * (d_cur - d_mid)
-            x_next = x_hat + h * d_trust
+            x_next = x_hat + h * d_mid
             prev_d_cur = d_cur.detach()
-            prev_d_prime = d_trust.detach()
+            prev_d_prime = d_mid.detach()
             prev_h = h.detach()
             continue
 
