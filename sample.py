@@ -20,6 +20,9 @@ RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
 RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT = (3, 4)
+RESEARCH_STANDARD_LOCAL_RX_BLOCK_START_STEPS_LEFT = (6,)
+RESEARCH_STANDARD_LOCAL_RX_BLOCK_END_STEPS_LEFT = (5,)
+RESEARCH_STANDARD_LOCAL_RX_ORDER = 3.0
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -128,6 +131,30 @@ def research_step_local_unipc_corrector(num_steps: int, device: torch.device) ->
     return step_local_unipc_corrector
 
 
+def research_step_local_rx_block_start(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_local_rx_block_start = torch.zeros(num_steps, dtype=torch.bool, device=device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return step_local_rx_block_start
+    terminal_end = num_steps - 1
+    for steps_left in RESEARCH_STANDARD_LOCAL_RX_BLOCK_START_STEPS_LEFT:
+        step_index = terminal_end - steps_left
+        if 0 <= step_index < terminal_end:
+            step_local_rx_block_start[step_index] = True
+    return step_local_rx_block_start
+
+
+def research_step_local_rx_block_end(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_local_rx_block_end = torch.zeros(num_steps, dtype=torch.bool, device=device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return step_local_rx_block_end
+    terminal_end = num_steps - 1
+    for steps_left in RESEARCH_STANDARD_LOCAL_RX_BLOCK_END_STEPS_LEFT:
+        step_index = terminal_end - steps_left
+        if 0 <= step_index < terminal_end:
+            step_local_rx_block_end[step_index] = True
+    return step_local_rx_block_end
+
+
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
@@ -155,6 +182,25 @@ def research_local_unipc_corrector_slope(
         + ((step_ratio + 3.0) / 6.0) * d_cur
         - (step_ratio.square() / denom) * d_prev
     )
+
+
+def research_local_rxdpm_block_state(
+    x_start: torch.Tensor,
+    d_start: torch.Tensor,
+    d_mid: torch.Tensor,
+    h_start: torch.Tensor,
+    h_mid: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    start_span = h_start.abs()
+    mid_span = h_mid.abs()
+    total_span = (start_span + mid_span).clamp_min(1e-12)
+    start_ratio = start_span / total_span
+    mid_ratio = mid_span / total_span
+    midpoint_weight = 0.5 / start_ratio.clamp_min(1e-12)
+    start_weight = 1.0 - midpoint_weight
+    coarse_state = x_start + (h_start + h_mid) * (start_weight * d_start + midpoint_weight * d_mid)
+    ratio_power_sum = start_ratio.pow(RESEARCH_STANDARD_LOCAL_RX_ORDER) + mid_ratio.pow(RESEARCH_STANDARD_LOCAL_RX_ORDER)
+    return coarse_state, ratio_power_sum
 
 
 def research_sampler(
@@ -188,10 +234,15 @@ def research_sampler(
     step_corrector_memory = research_step_corrector_memory(num_steps, latents.device)
     step_terminal_exact_heun = research_step_terminal_exact_heun(num_steps, latents.device)
     step_local_unipc_corrector = research_step_local_unipc_corrector(num_steps, latents.device)
+    step_local_rx_block_start = research_step_local_rx_block_start(num_steps, latents.device)
+    step_local_rx_block_end = research_step_local_rx_block_end(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
     prev_d_cur = None
     prev_d_prime = None
     prev_h = None
+    rx_block_start_x = None
+    rx_block_start_d = None
+    rx_block_start_h = None
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -206,6 +257,10 @@ def research_sampler(
         d_cur = (x_hat - denoised) / t_hat
         h = t_next - t_hat
         x_euler = x_hat + h * d_cur
+        if bool(step_local_rx_block_start[i]):
+            rx_block_start_x = x_hat.detach()
+            rx_block_start_d = d_cur.detach()
+            rx_block_start_h = h.detach()
 
         if i == num_steps - 1:
             x_next = x_euler
@@ -252,6 +307,19 @@ def research_sampler(
         x_heun = x_hat + h * corrected_slope
         relax = relax_flat.view(-1, *([1] * (x_heun.ndim - 1)))
         x_next = x_heun + relax * (x_euler - x_heun)
+        # Reuse the two approach steps as one localized RX-style block before the UniPC tail begins.
+        if bool(step_local_rx_block_end[i]) and rx_block_start_x is not None and rx_block_start_d is not None and rx_block_start_h is not None:
+            coarse_state, ratio_power_sum = research_local_rxdpm_block_state(
+                rx_block_start_x,
+                rx_block_start_d,
+                d_cur.detach(),
+                rx_block_start_h,
+                h.detach(),
+            )
+            x_next = (x_next - ratio_power_sum * coarse_state) / (1.0 - ratio_power_sum).clamp_min(1e-12)
+            rx_block_start_x = None
+            rx_block_start_d = None
+            rx_block_start_h = None
         prev_d_cur = d_cur.detach()
         prev_d_prime = d_prime.detach()
         prev_h = h.detach()

@@ -751,3 +751,149 @@ hypothesis=the winning `5e43179` trajectory may still enter the `{3,4}` UniPC wi
 expected_signature=the proxy frontier at NFE 5/9/11/13 stays effectively unchanged; if promoted to paper, block 0 should improve over `1.93345` or at least show a clear same-sign move before spending more paper budget
 ablation=if this wins, compare against the same window with the existing Heun-style blended slope and against a pure endpoint-Euler variant with no lookahead reuse, to isolate whether the gain is truly from forward-value placement
 kill_condition=any paper block-0 loss that looks like another large translation failure, any unexpected low-NFE drift, or a result that is indistinguishable from the already-rejected late schedule-law family
+
+## Session Addendum
+
+Session date: 2026-03-14
+Working paper base after forward-value reject: `5e43179`
+Reason for new pass: the localized forward-value family also missed badly on paper block 0, so the next rotation must avoid both schedule-only and endpoint-placement families.
+
+## Paper Entry
+
+paper_id=rx_dpm_2025
+title=Enhanced Diffusion Sampling via Extrapolation with Multiple ODE Solutions
+authors=Jinyoung Choi; Junoh Kang; Bohyung Han
+venue_or_source=ICLR 2025
+year=2025
+url=https://arxiv.org/abs/2504.01855
+pdf_path=literature/pdfs/rx_dpm_2504.01855.pdf
+family=grid-aware Richardson extrapolation / blockwise multi-resolution ODE solution mixing
+why_relevant=This is a recent independently discovered direct sampler paper and the strongest fresh anchor for a new family here. It is explicitly training-free, keeps NFE fixed, handles non-uniform schedules, and reports that a hybrid `RX+EDM` variant can outperform both plain RX-Euler and Heun by applying extrapolation only on selected late low-noise intervals.
+core_claim=Given two numerical solutions over the same interval, one fine `k`-step solution and one coarse single-step solution, a grid-aware Richardson-style extrapolation can cancel the leading truncation term and improve sample quality without extra model evaluations if intermediate predictions are reused from the base solver.
+assumptions=The base sampler admits a consistent local truncation order `p`; a coarse estimate over the same interval can be reconstructed from already-computed predictions or reused intermediate evaluations; the score field is smooth enough that the leading truncation term behaves approximately additively across non-uniform substeps.
+complete_sampling_pseudocode=
+- Inputs: pretrained score model `epsilon_theta`, reverse grid `t_N > ... > t_0`, base ODE solver `Phi`, block size `k`, local solver order `p`, initial noise `x_{t_N}`.
+- Partition the trajectory into repeated `k`-step blocks; let the current block start at `t_i` and end at `t_{i-k}`.
+- Inside the block, run the original solver normally on each substep to obtain the fine solution `x_hat^(k)_{t_{i-k}}`; store the score evaluations or intermediate predictions that the base solver already computed.
+- Let `h = t_i - t_{i-k}` and `lambda_j = (t_{i-j+1} - t_{i-j}) / h` for the `k` substeps in the block.
+- Reconstruct a coarse one-step estimate `x_hat^(1)_{t_{i-k}} = Phi(x_{t_i}, t_i, t_{i-k})` over the same full interval, reusing the stored predictions so no extra NFE is spent.
+- Form the grid-aware extrapolated state
+- `x_tilde^(k)_{t_{i-k}} = (x_hat^(k)_{t_{i-k}} - (sum_j lambda_j^p) * x_hat^(1)_{t_{i-k}}) / (1 - sum_j lambda_j^p)`.
+- Replace the block-end state with `x_tilde^(k)_{t_{i-k}}` and continue the next block from that corrected state.
+- For leftover steps that do not fill a full block, either shorten `k` or skip extrapolation.
+- For higher-order Runge-Kutta-like solvers, reuse the already-computed intermediate-stage evaluations to build the coarse estimate; for multistep solvers, reuse buffered past evaluations.
+state_variables_and_history=Current state at the start of a block; fine block-end state; reconstructed coarse block-end state; blockwise substep ratios `lambda_j`; solver order `p`; any intermediate stage evaluations or stored past drifts required by the base solver.
+nfe_accounting=Zero extra NFE when the coarse estimate reuses intermediate evaluations already computed for the fine block; the extra work is only storing a few states and taking a linear combination at block end.
+portability=direct
+repo_transfer_hypothesis=The portable version for this repo is a localized two-step extrapolation block immediately before the winning `{3,4}` UniPC window: keep the existing fine trajectory for the two approach steps, reconstruct a coarse block-end state from the already available start and midpoint drifts, then feed the extrapolated state into the unchanged UniPC plus terminal exact-Heun tail.
+failure_or_reject_boundary=Reject any translation that broadens into a global schedule rewrite or needs a new extra evaluation to build the coarse estimate. The useful transfer is localized blockwise state extrapolation, not replacing the whole sampler with RX-Euler.
+citation_followups=EDM; DDIM; PNDM; DPM-Solver; IIA; LA-DPM
+status=ready
+
+## Paper Entry
+
+paper_id=s4s_2025
+title=S4S: Solving for a Diffusion Model Solver
+authors=Eric Frankel; Sitan Chen; Jerry Li; Pang Wei Koh; Lillian J. Ratliff; Sewoong Oh
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2502.17423
+pdf_path=literature/pdfs/s4s_2502.17423.pdf
+family=learned solver coefficients and learned discretization schedules
+why_relevant=This is a recent independently discovered solver-design paper that is useful as a sharp reject boundary. It directly targets the same low-NFE sampler space, but its gains come from offline optimization of time-dependent coefficients and optionally schedules.
+core_claim=Few-NFE diffusion sampling is better treated as a global solver-design problem than a classical local truncation problem; learning solver coefficients, and optionally discretization steps, against a strong teacher yields uniformly better few-step samplers than fixed analytic coefficients.
+assumptions=A strong teacher solver is available; one can optimize solver coefficients and possibly schedule parameters offline using generated teacher samples and backpropagation; inference uses the learned coefficients without retraining the denoiser itself.
+complete_sampling_pseudocode=
+- Inputs: pretrained score model, fixed solver family parameterization `Psi_phi` with learnable time-dependent coefficients `phi`, optional learnable schedule parameters `Xi`, teacher solver `Psi_*`, distance metric `d`, noise radius `r`.
+- Sample many initial noise latents `x_T`; for each one, precompute the teacher output `Psi_*(x_T)`.
+- Optimize the student solver by minimizing `d(Psi_phi(x'_T), Psi_*(x_T))` subject to `x'_T` staying in a small ball around `x_T`; update both `phi` and the relaxed latent `x'_T` with projected SGD.
+- When learning only coefficients, keep the time grid fixed and learn per-step solver weights for LMS, single-step, or predictor-corrector formulas.
+- When learning schedules too, alternate between updating schedule parameters `Xi` and coefficient parameters `phi` while repeatedly re-running the student solver on the teacher dataset.
+- At inference time, sample with the learned coefficients and schedule exactly as a normal diffusion sampler, with no extra train-time machinery.
+state_variables_and_history=Learnable solver coefficients; optional learnable discretization parameters; relaxed input latents used during offline optimization; teacher outputs.
+nfe_accounting=Sampling-time NFE is unchanged once the solver is learned, but the method fundamentally depends on offline optimization and stored teacher trajectories.
+portability=incompatible
+repo_transfer_hypothesis=The transferable lesson is only that late-step coefficients may want to be time-dependent and solver-family-specific. A faithful S4S reproduction is out of scope because this repo forbids offline optimization, learned coefficients, and new assets.
+failure_or_reject_boundary=Reject direct use because the method needs offline optimization over solver coefficients and optionally schedules. Any faithful port would violate the fixed-pretrained, `sample.py`-only contract even though inference-time NFE stays fixed.
+citation_followups=LD3; iPNDM; UniPC; DPM-Solver-v3; BNS; AMED-Plugin
+status=ready
+
+## Paper Entry
+
+paper_id=fsampler_2025
+title=FSampler: Training-Free Acceleration of Diffusion Sampling via Epsilon Extrapolation
+authors=Michael A. Vladimir
+venue_or_source=public method document / ComfyUI whitepaper
+year=2025
+url=https://arxiv.org/abs/2511.09180
+pdf_path=literature/pdfs/fsampler_2511.09180.pdf
+family=epsilon-history extrapolation with explicit model-call skipping
+why_relevant=This is a recent independently discovered public method document that is not a clean fit for this repo, but it is useful for two reasons: it offers a simple extrapolation-based acceleration story, and it makes the fixed-NFE reject boundary explicit because its core mechanism is step skipping.
+core_claim=One can extrapolate the next denoising signal from recent epsilon history using low-order finite-difference formulas, then skip some model calls while keeping the wrapped sampler update rule unchanged; conservative skip cadences preserve perceptual fidelity while reducing wall-clock time.
+assumptions=The wrapped sampler is allowed to skip true denoiser evaluations on selected steps; a short epsilon history from real calls is available; guard rails such as protected head/tail windows, anchors, and clamps keep extrapolated skip steps stable.
+complete_sampling_pseudocode=
+- Inputs: base sampler, noise schedule, skip policy, epsilon history order, optional learning stabilizer and gradient correction.
+- For each reverse step:
+- If the step is a real-call step, evaluate the model, compute `epsilon`, append it to history, and run the base sampler update unchanged.
+- If the step is a skip step and enough history exists, extrapolate `epsilon_hat` from recent real epsilons using linear, Richardson, or cubic finite differences.
+- Validate `epsilon_hat` for finiteness and reasonable magnitude; optionally rescale it with an EMA learning ratio and add a small curvature correction.
+- Substitute `epsilon_hat` into the wrapped sampler's usual update rule instead of calling the model.
+- Periodically force real calls and protect early or late windows from skipping to limit drift.
+- Return the final sample and report reduced NFEs.
+state_variables_and_history=Current sample and noise level; epsilon history from real calls; skip cadence state; optional EMA learning ratio; optional previous derivative for curvature correction.
+nfe_accounting=The method explicitly reduces true NFEs by skipping model calls, so it does not preserve the fixed-budget contract used in this repo.
+portability=incompatible
+repo_transfer_hypothesis=The only portable lesson is that low-order extrapolation of denoising signals can be stable when aggressively localized and guarded. The faithful FSampler mechanism is still out of scope here because its value comes from skipping calls, not from redistributing a fixed call budget.
+failure_or_reject_boundary=Reject direct use because this repo is not evaluating time-saving skip layers; it is comparing fixed-NFE sampler mechanisms under identical call budgets.
+citation_followups=DPM-Solver; DPM-Solver++; PFDiff; UniPC; DEIS
+status=ready
+
+## Paper Entry
+
+paper_id=taylorseer_2025
+title=From Reusing to Forecasting: Accelerating Diffusion Models with TaylorSeers
+authors=Jiacheng Liu; Chang Zou; Yuanhuiyi Lyu; Junjie Chen; Linfeng Zhang
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2503.06923
+pdf_path=literature/pdfs/taylorseer_2503.06923.pdf
+family=feature-cache forecasting inside diffusion transformers
+why_relevant=This is a recent independently discovered acceleration paper that is useful mainly as a reject boundary. Its "forecast rather than reuse" idea rhymes with extrapolation, but the actual mechanism lives inside the model's hidden-feature cache rather than at the sampler update level.
+core_claim=Instead of reusing cached hidden features from earlier timesteps, predict future transformer features with Taylor-series finite differences; this preserves quality at much higher acceleration ratios than naive cache reuse.
+assumptions=The diffusion model exposes internal layer features across timesteps; those features evolve smoothly enough for finite-difference forecasting; inference can skip large parts of transformer computation by substituting forecast features.
+complete_sampling_pseudocode=
+- Inputs: diffusion transformer with cacheable block features, cache interval `N`, Taylor order `m`.
+- At fully computed timesteps, cache each layer feature and its finite differences up to order `m`.
+- For skipped intermediate timesteps, predict each feature with the Taylor expansion `F_pred(t-k) = F(t) + sum_i Delta^i F(t) * (-k)^i / (i! * N^i)`.
+- Feed the forecast features through the remaining computation instead of recomputing the expensive layers.
+- Periodically refresh the cache with a full model evaluation and update the finite-difference stack.
+- Continue sampling with the accelerated internal model execution.
+state_variables_and_history=Per-layer cached features; finite-difference feature stack; cache interval; Taylor order; skipped-step counters.
+nfe_accounting=The paper accelerates inference by reusing or forecasting internal features and skipping substantial model computation, not by changing a fixed sampler mechanism under an identical denoiser-call contract.
+portability=incompatible
+repo_transfer_hypothesis=The portable lesson is only conceptual: forecasting can outperform raw reuse when a state trajectory is smooth. The actual TaylorSeer mechanism is incompatible because this repo exposes only the sampler surface, not model internals or feature caches.
+failure_or_reject_boundary=Reject direct use because it requires instrumenting hidden transformer features and caching internal activations, which is far outside the `sample.py`-only contract.
+citation_followups=FORA; ToCa; TeaCache; DiT acceleration papers
+status=ready
+
+## Session Takeaway
+
+- `RX-DPM` is the strongest new direct anchor because it offers a zero-extra-NFE blockwise extrapolation mechanism that is explicitly designed for non-uniform schedules and higher-order solvers.
+- `S4S`, `FSampler`, and `TaylorSeer` all sharpen the reject boundary from three different sides: learned coefficients are out of scope, call-skipping layers are out of scope, and internal feature forecasting is out of scope.
+- The clean synthesized target is therefore a localized `RX-DPM`-style state extrapolation block that acts only on the two approach steps immediately before the winning `{3,4}` UniPC window, while leaving the rest of `5e43179` untouched.
+
+## Candidate Card
+
+family=localized_rxdpm_preunipc_block_extrapolation
+kind=mechanism
+external_anchor=Enhanced Diffusion Sampling via Extrapolation with Multiple ODE Solutions (Choi et al., 2025)
+borrowed_mechanism=grid-aware Richardson-style extrapolation between a fine two-step solution and a coarse one-step solution over the same late block
+synthesis_step=keep the exact `5e43179` sampler everywhere except for one localized two-step block on the late approach steps `{steps_left in 6,5}`; after running those two steps normally, reconstruct a coarse block-end state from the already available start and midpoint drifts, then replace the block-end state with a `p=3` grid-aware extrapolated state before entering the existing `{3,4}` UniPC window
+portability=direct
+base_commit=2919505
+active_nf_range=paper-targeted late full-step regime only; the branch is dormant when `num_steps < 12`, so NFE 5/9/11/13 should remain unchanged
+extra_nfe=0
+hypothesis=the current `5e43179` paper winner may still carry a two-step approach error into the pre-terminal UniPC window; a localized blockwise extrapolation can reduce that entry error without reopening the failed schedule-only, compensation-only, or forward-value families
+expected_signature=the proxy frontier at NFE 5/9/11/13 stays in the current stable band while `fid_N35` improves below `6.7513`; if promoted, paper block 0 should improve over `1.93345` or at least move in the right direction cleanly enough to justify a full row
+ablation=if this wins, compare the same block with the extrapolation turned off but the coarse-state buffer still computed, to isolate the gain from the extrapolation combination rather than from incidental refactoring
+kill_condition=any `fid_N35` regression, any low-NFE drift outside the current stable band, or any paper block-0 miss that looks like another large translation failure
