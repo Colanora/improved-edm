@@ -1032,3 +1032,19 @@ hypothesis=the two-step `{3,4}` paper-qualified window may still need two distin
 expected_signature=the proxy frontier at NFE 5/9/11/13 stays inside the current stable band; if promoted, paper block 0 should improve over `1.93345` or at least beat the recent exactization miss and justify a full-row continuation
 ablation=if this wins, compare against the same code path with the midpoint branch disabled so `{4}` falls back to the original UniPC step, isolating whether the gain comes from the midpoint solver itself rather than from refactoring
 kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper block-0 result that clearly trails the `5e43179` base
+
+## Candidate Card
+
+family=localized_dpm_solver2_preterminal_midpoint
+kind=ablation
+external_anchor=DPM-Solver (Lu et al., 2022)
+borrowed_mechanism=keep the same dedicated lambda-midpoint solver substitution but move its placement within the two-step pre-terminal window
+synthesis_step=from the new paper base `3d0ecd6`, relocate the localized DPM-Solver-2 midpoint branch from `{steps_left=4}` to `{steps_left=3}` so the earlier step falls back to the original UniPC correction while the later pre-terminal step takes the midpoint solver update
+portability=direct
+base_commit=1d36e19
+active_nf_range=paper-targeted full-step regime only; the branch remains dormant when `num_steps < 12`
+extra_nfe=0
+hypothesis=if the win is truly tied to the *placement* of the midpoint solver on the first pre-terminal step, then moving it one step later should weaken the paper path even if the proxy band stays effectively unchanged
+expected_signature=the proxy frontier remains inside the usual stable band; if promoted, paper block 0 should land above the new `3d0ecd6` base `1.92757`, confirming that the step-4 placement is the active ingredient
+ablation=this is the first same-family placement ablation required after the paper promotion; if it weakens, the current `3d0ecd6` story becomes much sharper
+kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper block-0 result that is not clearly weaker than `3d0ecd6`
