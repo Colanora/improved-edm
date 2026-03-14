@@ -1048,3 +1048,19 @@ hypothesis=if the win is truly tied to the *placement* of the midpoint solver on
 expected_signature=the proxy frontier remains inside the usual stable band; if promoted, paper block 0 should land above the new `3d0ecd6` base `1.92757`, confirming that the step-4 placement is the active ingredient
 ablation=this is the first same-family placement ablation required after the paper promotion; if it weakens, the current `3d0ecd6` story becomes much sharper
 kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper block-0 result that is not clearly weaker than `3d0ecd6`
+
+## Candidate Card
+
+family=localized_dpm_solver2_preterminal_midpoint
+kind=ablation
+external_anchor=DPM-Solver (Lu et al., 2022)
+borrowed_mechanism=keep the same dedicated lambda-midpoint solver substitution but widen it across the entire two-step pre-terminal window
+synthesis_step=from the restored `3d0ecd6` paper base, activate the localized DPM-Solver-2 midpoint branch on both `{steps_left=4}` and `{steps_left=3}` so the full pre-terminal tail becomes a two-step midpoint-solver block and the history-aware UniPC correction is removed only inside that window
+portability=direct
+base_commit=c0f176b
+active_nf_range=paper-targeted full-step regime only; the branch remains dormant when `num_steps < 12`
+extra_nfe=0
+hypothesis=if the `3d0ecd6` gain comes mostly from introducing midpoint diffusion-ODE structure anywhere in the pre-terminal tail, then widening the midpoint branch to both late steps could preserve or improve the paper path; if it weakens, the mixed midpoint-at-`{4}` plus UniPC-at-`{3}` composition is the real mechanism
+expected_signature=the proxy frontier should remain inside the usual stable band; if promoted, paper block 0 will likely land above `1.92757` if the mixed tail is minimal, but a surprise improvement would argue that the second late step also prefers midpoint integration over history correction
+ablation=this is the complementary same-family consolidation probe after the `{steps_left=3}` placement miss; together the two ablations test whether placement or two-step widening can explain the paper win
+kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper block-0 result that clearly trails the `3d0ecd6` base
