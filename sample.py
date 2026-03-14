@@ -20,6 +20,7 @@ RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
 RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT = (3, 4)
+RESEARCH_STANDARD_CURVATURE_EXACT_THRESHOLD = 0.10
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -135,6 +136,16 @@ def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) ->
     return ratio.sqrt()
 
 
+def research_relative_curvature_proxy(
+    d_cur: torch.Tensor,
+    prev_d_cur: torch.Tensor,
+    prev_h: torch.Tensor,
+) -> torch.Tensor:
+    delta_norm = (d_cur - prev_d_cur).flatten(1).norm(dim=1)
+    prev_norm = prev_d_cur.flatten(1).norm(dim=1).clamp_min(1e-12)
+    return delta_norm / (prev_h.abs() * prev_norm)
+
+
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
     step_fraction = research_step_fractions(num_steps, device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
@@ -219,22 +230,34 @@ def research_sampler(
         local_unipc = False
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
+            curvature_exact_mask = torch.zeros_like(alpha_flat, dtype=torch.bool)
+            if num_steps >= RESEARCH_STANDARD_STEP_THRESHOLD:
+                curvature_exact_mask = research_relative_curvature_proxy(d_cur, prev_d_cur, prev_h) > RESEARCH_STANDARD_CURVATURE_EXACT_THRESHOLD
             predictor_beta_flat = torch.full_like(alpha_flat, float(step_predictor_extrapolation[i]))
-            predictor_beta = predictor_beta_flat.view(-1, *([1] * (d_cur.ndim - 1)))
-            predictor_d = d_cur + predictor_beta * (d_cur - prev_d_cur)
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
             memory_flat = torch.full_like(alpha_flat, float(step_corrector_memory[i]))
             relax_flat = step_correction_relax[i] * (1.0 - growth_gate)
             if bool(step_terminal_exact_heun[i]):
                 alpha_flat = torch.ones_like(alpha_flat)
+                predictor_beta_flat = torch.zeros_like(predictor_beta_flat)
+                memory_flat = torch.zeros_like(memory_flat)
                 relax_flat = torch.zeros_like(relax_flat)
             elif float(step_corrector_memory[i]) == 0.0:
                 relax_flat = torch.zeros_like(relax_flat)
             local_unipc = bool(step_local_unipc_corrector[i]) and prev_h is not None
             if local_unipc:
                 alpha_flat = torch.ones_like(alpha_flat)
+                predictor_beta_flat = torch.zeros_like(predictor_beta_flat)
                 memory_flat = torch.zeros_like(memory_flat)
                 relax_flat = torch.zeros_like(relax_flat)
+            else:
+                # Cache-based curvature gate from SDM: exactize only genuinely stiff late steps.
+                alpha_flat = torch.where(curvature_exact_mask, torch.ones_like(alpha_flat), alpha_flat)
+                predictor_beta_flat = torch.where(curvature_exact_mask, torch.zeros_like(predictor_beta_flat), predictor_beta_flat)
+                memory_flat = torch.where(curvature_exact_mask, torch.zeros_like(memory_flat), memory_flat)
+                relax_flat = torch.where(curvature_exact_mask, torch.zeros_like(relax_flat), relax_flat)
+            predictor_beta = predictor_beta_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+            predictor_d = d_cur + predictor_beta * (d_cur - prev_d_cur)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         x_prime = x_hat + alpha * h * predictor_d
         t_prime_input = t_hat + alpha_flat * h

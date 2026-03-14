@@ -897,3 +897,122 @@ hypothesis=the current `5e43179` paper winner may still carry a two-step approac
 expected_signature=the proxy frontier at NFE 5/9/11/13 stays in the current stable band while `fid_N35` improves below `6.7513`; if promoted, paper block 0 should improve over `1.93345` or at least move in the right direction cleanly enough to justify a full row
 ablation=if this wins, compare the same block with the extrapolation turned off but the coarse-state buffer still computed, to isolate the gain from the extrapolation combination rather than from incidental refactoring
 kill_condition=any `fid_N35` regression, any low-NFE drift outside the current stable band, or any paper block-0 miss that looks like another large translation failure
+
+## Session Addendum
+
+Session date: 2026-03-14
+Working paper base after RX-DPM reject: `5e43179`
+Reason for new pass: the localized RX-DPM approach also failed on paper block 0, so the next rotation must avoid schedule-only, endpoint-placement, and block-extrapolation mechanisms.
+
+## Paper Entry
+
+paper_id=sdm_2026
+title=Formalizing the Sampling Design Space of Diffusion-Based Generative Models via Adaptive Solvers and Wasserstein-Bounded Timesteps
+authors=Sangwoo Jo; Sungjoon Choi
+venue_or_source=arXiv
+year=2026
+url=https://arxiv.org/abs/2602.12624
+pdf_path=literature/pdfs/sdm_2602.12624.pdf
+family=adaptive solver allocation and adaptive timestep scheduling
+why_relevant=This is a recent independently discovered direct paper and the most relevant new family after the RX miss. Its direct sampler-side contribution is a cache-based curvature proxy that decides when low-order versus higher-order updates are needed, without adding model evaluations or training.
+core_claim=Diffusion trajectories are nearly linear in the high-noise regime and sharply more curved near the data manifold; one can therefore improve the quality/efficiency tradeoff by using cached relative curvature to adapt the solver order and by reallocating timestep density with a Wasserstein-bounded schedule.
+assumptions=The vector field can be evaluated at the current step and cached from the previous one; local stiffness is well approximated by the discrete relative-curvature proxy; adaptive schedules can be precomputed or searched offline for a target NFE budget.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model, reverse timesteps `t_0 > ... > t_N`, solver family with Euler and Heun updates, optional adaptive schedule parameters.
+- For each step, compute the current vector field `v_i` at `(x_i, t_i)` and reuse the previous cached field `v_{i-1}`.
+- Form the cache-based relative-curvature proxy `kappa_hat(i) = ||v_i - v_{i-1}|| / (Delta t_{i-1} ||v_{i-1}||)`.
+- Convert this curvature signal into a solver-allocation weight `Lambda(t)`:
+- step schedule: switch from Euler to Heun when `kappa_hat(i)` crosses threshold `tau_k`;
+- linear/cosine schedules: blend `x = Lambda x_E + (1-Lambda) x_H`.
+- Update the state with the selected or blended solver and continue.
+- Separately, for adaptive scheduling, estimate a local variation proxy `S_hat(t)` for the vector field and choose step sizes that satisfy the Wasserstein-derived bound `Delta t <= sqrt(2 eta / S_hat)`.
+- If a fixed number of steps is required, resample the resulting adaptive path to a fixed N-step schedule by uniformly discretizing a weighted geodesic-length proxy.
+- Return the final sample.
+state_variables_and_history=Current sample `x_i`; current and previous vector fields `v_i`, `v_{i-1}`; previous step size; curvature proxy `kappa_hat(i)`; optional adaptive timestep ledger and Wasserstein error budget `eta`.
+nfe_accounting=The adaptive solver part is zero-extra-NFE because it uses cached vector fields already computed by the base solver. The adaptive scheduler itself is also training-free, but in practice it changes the time grid and may use extra offline search/precomputation.
+portability=direct
+repo_transfer_hypothesis=The portable part for this repo is the adaptive solver gate, not the schedule optimizer: use the cached drift change to selectively promote a late step from the current relaxed predictor-corrector form to an exact Heun step only when local curvature is high, while preserving the paper-qualified `{3,4}` UniPC tail and the fixed EDM schedule.
+failure_or_reject_boundary=Reject direct use of the adaptive scheduler component because this repo already saw a decisive schedule-law paper miss and because SDM's timetable search changes the grid globally. The useful transfer is the cache-based curvature-triggered solver allocation.
+citation_followups=EDM; DPM-Solver; COS; Jump Your Steps; probabilistic ODE solver stiffness analysis
+status=ready
+
+## Paper Entry
+
+paper_id=dual_solver_2026
+title=Dual-Solver: A Generalized ODE Solver for Diffusion Models with Dual Prediction
+authors=Soochul Park; Yeon Ju Lee
+venue_or_source=ICLR 2026
+year=2026
+url=https://arxiv.org/abs/2603.03973
+pdf_path=literature/pdfs/dual_solver_2603.03973.pdf
+family=learned dual-prediction solver with learned integration domain and residual coefficients
+why_relevant=This is a recent independently discovered solver paper that initially looks close to the repo's low-NFE regime, but it is useful mainly as a reject boundary because its gains come from learning per-step coefficients and timesteps.
+core_claim=A generalized predictor-corrector solver with learnable parameters controlling prediction type, integration domain, and second-order residual terms can outperform existing few-step solvers when the parameters are optimized end-to-end with a classifier-based objective.
+assumptions=The solver parameters and timesteps can be learned offline by backpropagating through the full sampling process using a pretrained classifier or CLIP model; the backbone exposes both `x_theta` and `epsilon_theta` or allows conversion between them.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion backbone, initial noise `x_T`, timesteps `{t_i}`, predictor-corrector solver family with learnable per-step parameters `gamma`, `tau`, `kappa`, and a pretrained classifier or CLIP model for optimization.
+- At inference, run a first-order predictor to produce a provisional sample `x'_{t_{i+1}}` from the current state and current model outputs.
+- Evaluate the model at the provisional sample and apply a second-order corrector whose coefficients are determined by the learned per-step parameter set.
+- Repeat until the final time is reached.
+- Offline, optimize all stepwise solver parameters and intermediate timesteps end-to-end so the final decoded image minimizes a classification or CLIP loss, updating the parameters with backpropagation through the sampler.
+state_variables_and_history=Current state; predictor and corrector parameter sets for each step; optional converted dual predictions `x_theta` and `epsilon_theta`; learned timesteps; classifier loss targets.
+nfe_accounting=Sampling-time NFE can match a standard predictor-corrector sampler, but the method depends on offline learned parameters and learned timesteps.
+portability=incompatible
+repo_transfer_hypothesis=The only portable lesson is that prediction type and integration domain matter and may vary by step. A faithful Dual-Solver port is out of scope because it requires learned coefficients, learned timesteps, and external optimization machinery.
+failure_or_reject_boundary=Reject direct use because the method's value comes from offline parameter learning, which violates the fixed-pretrained, `sample.py`-only contract.
+citation_followups=DPM-Solver++; BNS-Solver; DS-Solver; CLIP-based solver learning
+status=ready
+
+## Paper Entry
+
+paper_id=dpm_solver_2022
+title=DPM-Solver: A Fast ODE Solver for Diffusion Probabilistic Model Sampling in Around 10 Steps
+authors=Cheng Lu; Yuhao Zhou; Fan Bao; Jianfei Chen; Chongxuan Li; Jun Zhu
+venue_or_source=NeurIPS 2022
+year=2022
+url=https://arxiv.org/abs/2206.00927
+pdf_path=literature/pdfs/dpm_solver_2206.00927.pdf
+family=dedicated exponential-integrator diffusion ODE solver
+why_relevant=This older seminal paper is the clean reference for the "higher-order only where it matters" part of the new SDM pass. It explains how the dedicated diffusion ODE structure changes what a high-order step should look like and helps distinguish principled solver promotion from arbitrary late-step patches.
+core_claim=By analytically integrating the linear part of the diffusion ODE and approximating only the exponentially weighted neural-network integral, one can build dedicated first-, second-, and third-order solvers that work in the few-step regime far better than black-box ODE solvers.
+assumptions=The diffusion ODE can be expressed with known `alpha_t`, `sigma_t`, and log-SNR `lambda`; the model predicts the noise term or an equivalent representation; one can evaluate the model at the current state and a small number of intermediate states.
+complete_sampling_pseudocode=
+- Inputs: initial noisy sample `x_T`, reverse timesteps `{t_i}`, corresponding `lambda_i = log(alpha_i / sigma_i)`, trained noise predictor `epsilon_theta`.
+- For each step from `t_{i-1}` to `t_i`, write the exact solution as the analytically integrated linear term plus an exponentially weighted integral of `epsilon_theta`.
+- First-order version:
+- `x_i = alpha_i/alpha_{i-1} * x_{i-1} - sigma_i (exp(h_i)-1) * epsilon_theta(x_{i-1}, t_{i-1})`.
+- Second-order version:
+- Evaluate an intermediate state at the lambda midpoint `s_i`, run the model there, and use that midpoint prediction in the final update over the full interval.
+- Third-order version:
+- Evaluate two intermediate states, form finite-difference terms, and use them in the final exponential-integrator update.
+- Continue until `t_M = 0`.
+state_variables_and_history=Current state; optional midpoint or two-point intermediate states; log-SNR step size `h_i`; model evaluations at current and intermediate states.
+nfe_accounting=Zero extra NFE relative to the chosen order: order-1 uses one evaluation, order-2 uses two, order-3 uses three. There is no offline training.
+portability=direct
+repo_transfer_hypothesis=The full global DPM-Solver family is too disruptive for the current paper winner, but the portable lesson is that exact or dedicated higher-order promotion should be reserved for the genuinely high-curvature late regime rather than sprayed uniformly over the entire trajectory.
+failure_or_reject_boundary=Reject a full global swap because earlier localized DPM-Solver++/ERA-style probes already weakened or lost here. The useful role of DPM-Solver in this pass is as the solver-design baseline that SDM's curvature gate decides when to promote toward.
+citation_followups=DPM-Solver++; UniPC; SDM adaptive solvers
+status=ready
+
+## Session Takeaway
+
+- `SDM` contributes a direct, zero-extra-NFE cache-based curvature gate that is still open in this repo because it changes *when* a stronger step is used rather than changing the schedule or introducing a new endpoint formula.
+- `Dual-Solver` is a clean reject boundary: learned per-step coefficients and learned timesteps are out of scope even though the inference-time predictor-corrector pattern looks familiar.
+- `DPM-Solver` provides the older solver-design reference for why late curvature should trigger a more exact step, but not necessarily a global solver swap.
+- The next clean synthesized target is therefore a conservative curvature-gated exactization step immediately before the existing `{3,4}` UniPC window, leaving the paper-qualified tail structure intact.
+
+## Candidate Card
+
+family=curvature_gated_late_exactization
+kind=mechanism
+external_anchor=Formalizing the Sampling Design Space of Diffusion-Based Generative Models via Adaptive Solvers and Wasserstein-Bounded Timesteps (Jo & Choi, 2026); DPM-Solver (Lu et al., 2022)
+borrowed_mechanism=use a cached relative-curvature proxy to decide when a late step should be promoted from a cheaper approximate update to a more exact higher-order one
+synthesis_step=keep the exact `5e43179` sampler everywhere, including the `{3,4}` localized UniPC window and the last two exact-Heun stages, but add an SDM-style sample-wise curvature gate on non-UniPC late standard steps that collapses the current relaxed predictor-corrector update to exact Heun only when the cached relative curvature exceeds a conservative threshold
+portability=direct
+base_commit=6b1e3f6
+active_nf_range=paper-targeted full-step regime only; the branch is dormant when `num_steps < 12`, so NFE 5/9/11/13 should remain unchanged
+extra_nfe=0
+hypothesis=the current paper winner may only need extra exactness on the single high-curvature step immediately before the `{3,4}` UniPC window, and a curvature trigger can supply that selectively without reopening the failures from fixed schedule warps, forward-value placement, or block extrapolation
+expected_signature=the proxy frontier at NFE 5/9/11/13 stays inside the current stable band while `fid_N35` improves below `6.7513`; if promoted, paper block 0 should beat `1.93345` or at least show a cleaner same-sign move than the recent misses
+ablation=if this wins, compare against the same code path with the curvature threshold raised high enough to disable the gate, to isolate the gain from the adaptive trigger rather than from incidental refactoring
+kill_condition=any `fid_N35` regression, any low-NFE drift outside the stable band, or any paper block-0 miss that looks like another clear translation failure
