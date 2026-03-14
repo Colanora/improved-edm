@@ -21,6 +21,7 @@ RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
 RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT = (3, 4)
 RESEARCH_STANDARD_LOCAL_DPM_SOLVER_STEPS_LEFT = (4,)
+RESEARCH_STANDARD_LOCAL_VIRTUAL_PREDICTOR_STEPS_LEFT = (5,)
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -141,6 +142,18 @@ def research_step_local_dpm_solver_midpoint(num_steps: int, device: torch.device
     return step_local_dpm_solver_midpoint
 
 
+def research_step_local_virtual_predictor(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_local_virtual_predictor = torch.zeros(num_steps, dtype=torch.bool, device=device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return step_local_virtual_predictor
+    terminal_end = num_steps - 1
+    for steps_left in RESEARCH_STANDARD_LOCAL_VIRTUAL_PREDICTOR_STEPS_LEFT:
+        step_index = terminal_end - steps_left
+        if 0 <= step_index < terminal_end:
+            step_local_virtual_predictor[step_index] = True
+    return step_local_virtual_predictor
+
+
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
@@ -202,6 +215,7 @@ def research_sampler(
     step_terminal_exact_heun = research_step_terminal_exact_heun(num_steps, latents.device)
     step_local_unipc_corrector = research_step_local_unipc_corrector(num_steps, latents.device)
     step_local_dpm_solver_midpoint = research_step_local_dpm_solver_midpoint(num_steps, latents.device)
+    step_local_virtual_predictor = research_step_local_virtual_predictor(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
     prev_d_cur = None
     prev_d_prime = None
@@ -244,9 +258,13 @@ def research_sampler(
         local_unipc = False
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
-            predictor_beta_flat = torch.full_like(alpha_flat, float(step_predictor_extrapolation[i]))
-            predictor_beta = predictor_beta_flat.view(-1, *([1] * (d_cur.ndim - 1)))
-            predictor_d = d_cur + predictor_beta * (d_cur - prev_d_cur)
+            if bool(step_local_virtual_predictor[i]) and prev_h is not None:
+                predictor_step_ratio = (alpha_flat * h / prev_h).to(dtype=torch.float64)
+                predictor_d = d_cur + predictor_step_ratio.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
+            else:
+                predictor_beta_flat = torch.full_like(alpha_flat, float(step_predictor_extrapolation[i]))
+                predictor_beta = predictor_beta_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+                predictor_d = d_cur + predictor_beta * (d_cur - prev_d_cur)
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
             memory_flat = torch.full_like(alpha_flat, float(step_corrector_memory[i]))
             relax_flat = step_correction_relax[i] * (1.0 - growth_gate)

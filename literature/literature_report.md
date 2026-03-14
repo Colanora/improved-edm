@@ -1387,3 +1387,19 @@ hypothesis=the remaining paper gap may be a late approach-step scale-calibration
 expected_signature=the proxy frontier should remain inside the usual stable band; if promoted, paper block 0 should improve beyond the `3d0ecd6` base `1.92757` or at least outperform the recent trust-region near-ties
 ablation=if this family wins, keep the same `{5,6}` window but replace the online norm ratio with a constant `1.0` or a fixed scalar so we can distinguish true online calibration from the mere existence of another late branch
 kill_condition=any low-NFE drift outside the stable band, any instability on the approach steps, or any paper block-0 loss that clearly trails the `3d0ecd6` base
+
+## Candidate Card
+
+family=localized_stork_virtual_predictor
+kind=mechanism
+external_anchor=STORK: Faster Diffusion And Flow Matching Sampling By Resolving Both Stiffness And Structure-Dependence (Tan et al., 2025)
+borrowed_mechanism=replace one late predictor evaluation with a virtual internal stage synthesized from the current drift and a finite-difference time derivative estimated from the previous real drift
+synthesis_step=from the exact `3d0ecd6` base, keep the `{steps_left=4}` midpoint entry step and `{steps_left=3}` UniPC corrector untouched, but on the single earlier approach step `{5}` replace the usual relaxed predictor extrapolation with a STORK-inspired virtual predictor `d_virtual` at the predictor time, using `prev_d_cur` and `prev_h` to approximate the local time derivative without adding model calls
+portability=direct
+base_commit=3d0ecd6
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the dormant band because the branch is inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the current paper base may still lose accuracy on the single standard-regime step immediately before the winning midpoint entry; a virtual internal stage tied to the actual predictor time could improve stiffness handling there without modifying the midpoint-plus-UniPC tail itself
+expected_signature=the proxy frontier should stay in the usual stable band; if promoted, paper block 0 should land below `1.92757` or at least beat the recent `abb8a61` paper-side loss convincingly
+ablation=if this family wins, keep the same `{5}` window but fall back to the original predictor extrapolation rule to verify that the gain comes from the virtual-stage construction rather than from another late-branch placement
+kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 loss that clearly trails the `3d0ecd6` base
