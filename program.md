@@ -7,9 +7,11 @@ Discover a **simple, literature-grounded, training-free sampler mechanism** — 
 uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1
 ```
 
-You are doing **sampler mechanism research**, not benchmark gardening. A proxy win matters only if it translates to the full-step regime, and then survives the official paper path.
+You are doing **sampler mechanism research**, not benchmark gardening.
 
-Literature is a tool for proposing better ideas in this repo, not the endpoint. You may reproduce an external method or run a literature baseline when it is useful, but only in service of learning, calibration, ablation, or the design of a stronger repo-suited idea.
+A proxy win matters only if it translates to the full-step regime, and then survives the official paper path. Literature is a tool for proposing better ideas in this repo, not the endpoint. You may reproduce an external method or run a literature baseline when it is useful, but only in service of learning, calibration, ablation, or the design of a stronger repo-suited idea.
+
+Do **not** redefine progress as a same-family micro-tweak that only nicks a lucky scalar while weakening the mechanism story.
 
 ---
 
@@ -19,7 +21,7 @@ The **current checkout** is the source of truth.
 - If this file disagrees with the current code, trust the code.
 - Do not use stale commands copied from old notes or old docs.
 - Do not assume the current best commit, current best FID, or current active family from memory; derive them from the visible ledgers in the checkout.
-- If legacy ledgers or commands from an older 3-stage protocol still exist, read them only as history; follow the active protocol in this file.
+- If legacy ledgers or commands from an older protocol still exist, read them only as history; follow the active protocol in this file.
 
 ---
 
@@ -44,21 +46,22 @@ This repo is for **inference-time sampler research on a fixed pretrained model**
 ## Evaluation hierarchy
 There are two active evaluation layers. Use them in this priority order for decisions:
 
-1. `paper_results.tsv` = authoritative **50k** claim path
+1. `paper_results.tsv` = authoritative **paper** claim path as recorded by the current checkout's `paper_eval.py`
 2. `results.tsv` = cheap **5k** proxy path
 
 Rule:
 
-- **paper > proxy**
-
-A proxy improvement that worsens the paper path is not a real promotion.
+- **paper > proxy**. A proxy improvement that worsens the paper path is not a real promotion.
 
 Rules:
 
 - The active protocol uses **one low-step regime** and **one full-step regime** only.
-- The active protocol uses **5k** samples for proxy evidence and **50k** samples for paper-level evidence.
-- Do **not** spend runs on a 3-stage `proxy/confirm/final` ladder or repeated `3 x 50k` paper sweeps.
+- The active protocol uses **5k** samples for proxy evidence.
+- The active paper path is exactly what the current checkout's `paper_eval.py` records. In the current checkout, that is the official **3-block** paper protocol with **3 x 50k** seed blocks written as one row in `paper_results.tsv`.
+- Do **not** spend runs on a legacy `proxy/confirm/final` ladder or invent unofficial paper shortcuts that disagree with the current checkout.
 - If the current checkout still contains old ledgers such as `standard.tsv`, treat them as historical context, not the active decision layer.
+- When comparing paper rows, use the **full seed-block vector** and the corresponding **paper mean** as the primary signal. Treat `fid_min` as a secondary note or tiebreaker, not as the incumbent selector by itself.
+- `paper_mean` means the arithmetic mean of the recorded paper seed blocks for that row.
 
 ---
 
@@ -72,15 +75,18 @@ At the start of every session:
    - `proxy_research_best`
    - `paper_heun_ref`
    - `paper_research_best`
-4. Set `working_base` using this precedence:
+4. Derive `paper_heun_ref` and `paper_research_best` from **full paper rows**, not from a single lucky `fid_min`.
+5. Prefer the row with the better overall seed-block vector / `paper_mean`; use `fid_min` only as a secondary tiebreaker.
+6. If two paper rows are effectively tied, prefer the simpler and more ablatable mechanism family as `working_base`, not the noisier row with one lucky block.
+7. Set `working_base` using this precedence:
    - `paper_research_best`
    - else `proxy_research_best`
-5. If the current `sample.py` does **not** match `working_base`, restore or reconstruct `working_base` before testing a new idea.
-6. Inspect recent **research** commits and the latest report rows so you do not repeat a dead family.
-7. Initialize or update the literature workspace:
-   - `literature/pdfs/`
-   - `literature/literature_report.md`
-8. Complete a **session literature pass** and write the required full-text notes before any serious edit, candidate card, or evaluation run.
+8. If the current `sample.py` does **not** match `working_base`, restore or reconstruct `working_base` before testing a new idea.
+9. Inspect recent **research** commits and the latest report rows so you do not repeat a dead family.
+10. Initialize or update the literature workspace:
+    - `literature/pdfs/`
+    - `literature/literature_report.md`
+11. Complete a **session literature pass** and write the required full-text notes before any serious edit, candidate card, or evaluation run.
 
 Rules:
 
@@ -98,7 +104,7 @@ A research session follows this loop:
 4. **Edit `sample.py`** to implement exactly that hypothesis.
 5. **Run evaluation** in the 2-layer protocol:
    - a **5k proxy** check,
-   - and a **50k paper** check whenever promotion is justified.
+   - and a paper-path check whenever promotion is justified.
 6. **Decide keep / discard / ablate / rotate** using the higher-tier evidence.
 7. **Report what was learned**, including the literature takeaway that produced or rejected the idea.
 8. Repeat from step 2 or step 3 as appropriate:
@@ -114,6 +120,7 @@ Rules:
 - The default micro-loop is **literature -> candidate -> edit -> evaluate -> decide -> report**.
 - The agent must not collapse the loop into pure `edit -> run -> tweak -> run` behavior.
 - The literature pass is not a box-checking ritual; it must feed the next concrete mechanism idea, reject boundary, baseline probe, or ablation.
+- Keep a 2-track cadence: **incumbent consolidation** (ablation or simplification of the best paper-supported family) and **orthogonal family exploration** (a genuinely different mechanism family). Do not stay indefinitely inside near-neighbor late-stage Heun variants.
 
 ---
 
@@ -203,13 +210,12 @@ Rules:
   - `direct` = implementable in `sample.py` only
   - `partial` = possible, but requires approximations, offline stats, or awkward adaptation
   - `incompatible` = requires retraining, learned coefficients, extra models, or harness changes
-- Prefer `direct` families.
+- Prefer `direct` families for mainline implementation.
 - Prefer `extra_nfe = 0` families unless there is a very strong reason otherwise.
+- When a strong paper is judged `partial` or `incompatible`, write the exact blocker in `literature/literature_report.md`. Do **not** silently compress it into a nearby Heun patch and call that a faithful probe.
 - The literature pass is incomplete unless the literature workspace is written down **before** any serious edit or run.
 - Internal memory of known methods does **not** satisfy this requirement; the pass must include session-fetched external sources.
-- Recent papers are a **search preference**, not a ban on older anchors.
-
-Do **not** rely only on repo-local paper notes or only on the active code family.
+- Recent papers are a **search preference**, not a ban on older anchors. Do **not** rely only on repo-local paper notes or only on the active code family.
 
 ---
 
@@ -255,6 +261,7 @@ Rules:
 - `external_anchor` must cite a real external method, paper, or public method doc whose full text has already been logged in the literature workspace.
 - `borrowed_mechanism` must state what specific idea is being imported from the anchor.
 - `synthesis_step` must state what is new, simplified, combined, or redirected for this repo relative to the anchor; if the candidate is a near-direct reproduction, write `none` and justify the probe value.
+- If the candidate claims to be a new family, it must state what makes it mechanistically different from the current `working_base`; window changes, gate shifts, or coefficient twiddles alone do not qualify.
 - If you cannot explain the idea in this format, the idea is not ready.
 
 ---
@@ -275,6 +282,7 @@ Rules:
 - The active protocol uses **one low-step regime** and **one full-step regime** only.
 - If a mechanism is expected to act mainly in the full-step regime, the low-step proxy is only a **sanity check**, not the main keep/discard signal.
 - Do **not** kill a paper-targeted idea solely because the low-step proxy is flat when the mechanism is inactive there.
+- Mild proxy loss by itself is **not** a veto for an explicitly paper-targeted idea if the mechanism is inactive in proxy and there is no instability or obvious target-regime regression.
 - Do kill any idea that causes catastrophic proxy collapse, instability, NaNs, or obvious regression in the target regime.
 
 ---
@@ -283,18 +291,19 @@ Rules:
 The active evaluation protocol has only two stages:
 
 - **proxy** = one low-step regime evaluated at **5k** samples
-- **paper** = one full-step regime evaluated at **50k** samples through the authoritative path
+- **paper** = one full-step regime evaluated through the authoritative path recorded by the current checkout's `paper_eval.py`
 
 Rules:
 
 - Treat the **5k proxy** as a screen, not a claim.
-- Treat the **50k paper** run as the authoritative claim path.
+- Treat the paper run recorded by `paper_eval.py` as the authoritative claim path.
 - Do **not** create a `proxy/confirm/final` ladder.
-- Do **not** run repeated `3 x 50k` paper sweeps.
+- Do **not** invent unofficial single-block paper shortcuts.
 - A local keep must say whether it is a `proxy_keep` or `paper_keep`.
 - A new local champion must still be judged against the active Heun reference and the current `working_base`.
+- When reading `paper_results.tsv`, compare the full seed-block vector and `paper_mean` before looking at `fid_min`.
 - Use the maximum currently idle visible GPUs for every evaluation run; proxy eval should shard the single 5k seed set across GPUs rather than adding extra seed blocks.
-- Use the current checkout's supported commands to realize the 5k proxy and the 50k paper run. Do not invent stale or unsupported commands.
+- Use the current checkout's supported commands to realize the 5k proxy and the paper-path run. Do not invent stale or unsupported commands.
 
 ---
 
@@ -313,7 +322,9 @@ Use the canonical claim command:
 ```bash
 uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1
 ```
+
 Execution note:
+
 - use all idle gpus for generation and fid calculation(if we can)
 - use nccl backend(we have 32g shm)
 
@@ -322,7 +333,8 @@ Rules:
 - Do not use unsupported stale commands from older notes.
 - If the current checkout restricts paper evaluation to the official protocol, obey that restriction.
 - Paper-path output is the source of truth for serious claims.
-- The active paper layer is **one 50k run**, not repeated `3 x 50k` sweeps.
+- The active paper layer is the current checkout's official `paper_eval.py` path. In this checkout, that means one recorded paper-evaluation row containing **3 x 50k** seed blocks.
+- Assign paper-side labels from the **full paper row**. A lucky `fid_min` without supportive block-vector / `paper_mean` evidence is not enough for `paper_keep`.
 
 Paper-side labels:
 
@@ -343,25 +355,31 @@ Use these rules strictly:
    - `proxy_keep`
    - `paper_keep`
 3. A proxy-only win may not replace a stronger paper base.
-4. Never continue search from a weaker `HEAD` than `working_base`.
-5. After **2 scalar-only tweaks** inside the same family, either:
+4. A paper keep or new incumbent must be supported by the full paper row, not only by a lone `fid_min` dip.
+5. Never continue search from a weaker `HEAD` than `working_base`.
+6. After **2 scalar-only tweaks** inside the same family, either:
    - run the planned ablation/simplification, or
-   - rotate to a different family.
-6. After **2 misses** in the same family, rotate unless the next step is a clearly justified ablation.
-7. After **2 paper_micro_wins** in the same family, simplify or rotate. Do not keep stacking gates and knobs indefinitely.
-8. If a family needs many unrelated patches to survive, that is evidence against the family.
-9. After **2 reproduction/probe candidates** from literature without yielding a clear synthesized family, stop replaying names from the literature; write down a new mechanism idea or rotate.
+   - rotate to a genuinely orthogonal family.
+7. After **2 misses** in the same family, rotate unless the next step is a clearly justified ablation.
+8. After **2 paper_micro_wins** in the same family, simplify or rotate. Do not keep stacking gates and knobs indefinitely.
+9. If a family needs many unrelated patches to survive, that is evidence against the family.
+10. After **2 reproduction/probe candidates** from literature without yielding a clear synthesized family, stop replaying names from the literature; write down a new mechanism idea or rotate.
+11. A "new family" must be mechanistically different from the active one; changing only windows, gates, relax weights, predictor constants, or similar micro-knobs does not count as a family rotation.
 
 ---
 
 ## Priority family queue
 Default queue unless evidence clearly says otherwise. This queue is a **search prior**, not a closed menu; literature may surface a better family and justify reordering it.
 
+- If the active family already has a credible `paper_keep`, the next non-ablation paper probe should prefer a genuinely orthogonal family from this queue rather than another near-neighbor patch.
+
 1. **UniPC-style zero-extra-NFE corrector family**
 2. **DPM-Solver / DEIS style dedicated diffusion ODE solver family**
 3. **timestep / schedule-law family**
 4. **late-stage higher-order correction or solver switching**, but only if it can be expressed as one clean mechanism
 5. **controlled stochastic restart**, only if NFE accounting remains explicit and fair
+
+- If literature points to a strong `partial` family outside this queue, run at least one explicit portability probe or write a reject boundary. Do not ignore strong families silently just because they are awkward under the frozen contract.
 
 Avoid spending long runs on same-family scalar twiddling of:
 
@@ -405,6 +423,7 @@ Each report row must state:
 - family
 - outcome tier
 - metric deltas vs active references
+- paper block vector / `paper_mean` when paper data exists
 - mechanistic takeaway
 - concrete next action
 
@@ -423,12 +442,12 @@ The purpose of the report is to compress learning, not to merely log that a run 
 ## Poster rule
 A result may be called a **poster candidate** only if all of the following hold:
 
-1. it improves the authoritative paper-path result for `research`,
-2. it matches or beats the best trustworthy paper-path Heun result for `target=uncond`, `steps=18`,
+1. it improves the authoritative paper-path result for `research` on the **full paper row**, not only on a lucky `fid_min`,
+2. it matches or beats the best trustworthy paper-path Heun result for `target=uncond`, `steps=18` on the **full paper row**,
 3. the effect is explained by **one coherent mechanism family**,
 4. at least one ablation weakens or removes the effect,
 5. the code remains simple enough to explain in one figure or one paragraph,
-6. the 5k proxy and the 50k paper run do not show catastrophic collapse.
+6. the 5k proxy and the authoritative paper path do not show catastrophic collapse.
 
 Until then, use weaker labels precisely.
 
@@ -439,6 +458,9 @@ Do **not**:
 
 - confuse proxy wins with paper wins,
 - keep editing on top of an unverified weaker base,
+- select incumbents by a single lucky `fid_min` while ignoring the rest of the paper row,
+- rename near-neighbor gate/window/constant tweaks as a new family,
+- silently compress a `partial` literature method into a nearby Heun patch without writing the portability loss,
 - stay trapped in one family because it is easy to tune,
 - skip literature search and reinvent old sampler ideas blindly,
 - limit literature search to repo-provided or already-named methods,
@@ -447,10 +469,8 @@ Do **not**:
 - use a paper as a primary anchor without downloading and reading its PDF,
 - proceed when the literature report still lacks correct sampler pseudocode,
 - replay named methods from papers without extracting a repo-suited mechanism idea,
-- waste budget on repeated `3 x 50k` sweeps,
+- waste budget on repeated full paper sweeps beyond the official protocol,
 - claim poster-level progress without a paper-path win over Heun,
 - bury the real idea under many unrelated stabilizers.
 
-The goal is not to produce a complicated sampler.
-The goal is not to reproduce a literature survey inside `sample.py`.
-The goal is to produce a **defensible, simple, externally grounded mechanism** that survives the official evaluation path.
+The goal is not to produce a complicated sampler. The goal is not to reproduce a literature survey inside `sample.py`. The goal is to produce a **defensible, simple, externally grounded mechanism** that survives the official evaluation path.
