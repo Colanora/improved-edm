@@ -44,12 +44,11 @@ def research_step_fractions(num_steps: int, device: torch.device) -> torch.Tenso
         return step_fraction
     early = step_fraction <= RESEARCH_STANDARD_STEP_PIVOT
     early_scale = RESEARCH_STANDARD_SIGMA_PIVOT / RESEARCH_STANDARD_STEP_PIVOT
-    late_fraction = ((step_fraction - RESEARCH_STANDARD_STEP_PIVOT) / (1.0 - RESEARCH_STANDARD_STEP_PIVOT)).clamp(0.0, 1.0)
-    late_progress = 1.0 - torch.cos(0.5 * torch.pi * late_fraction)
+    late_scale = (1.0 - RESEARCH_STANDARD_SIGMA_PIVOT) / (1.0 - RESEARCH_STANDARD_STEP_PIVOT)
     return torch.where(
         early,
         step_fraction * early_scale,
-        RESEARCH_STANDARD_SIGMA_PIVOT + late_progress * (1.0 - RESEARCH_STANDARD_SIGMA_PIVOT),
+        RESEARCH_STANDARD_SIGMA_PIVOT + (step_fraction - RESEARCH_STANDARD_STEP_PIVOT) * late_scale,
     )
 
 
