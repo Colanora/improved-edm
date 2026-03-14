@@ -71,3 +71,21 @@ def test_evaluate_sampler_smoke(tmp_path, monkeypatch) -> None:
 
     assert set(fid_by_nfe) == {5, 9, 11, 13}
     assert np.isfinite(frontier_score)
+
+
+def test_resolve_process_count_uses_all_visible_cuda_gpus_by_default(monkeypatch) -> None:
+    monkeypatch.setattr(run.torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(run.torch.cuda, "device_count", lambda: 4)
+    assert run.resolve_process_count(torch.device("cuda"), requested_gpus=0) == 4
+
+
+def test_resolve_process_count_keeps_cpu_single_process() -> None:
+    assert run.resolve_process_count(torch.device("cpu"), requested_gpus=8) == 1
+
+
+def test_shard_seed_batches_distributes_one_seed_set_across_ranks() -> None:
+    seeds = list(range(10))
+    all_batches, rank_batches, prefix_counts = run.shard_seed_batches(seeds, batch_size=2, world_size=3, rank=1)
+    assert all_batches == [[0, 1], [2, 3], [4, 5], [6, 7], [8], [9]]
+    assert rank_batches == [[2, 3], [8]]
+    assert prefix_counts == [0, 2, 4, 6, 8, 9, 10]

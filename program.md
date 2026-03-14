@@ -293,6 +293,7 @@ Rules:
 - Do **not** run repeated `3 x 50k` paper sweeps.
 - A local keep must say whether it is a `proxy_keep` or `paper_keep`.
 - A new local champion must still be judged against the active Heun reference and the current `working_base`.
+- Use the maximum currently idle visible GPUs for every evaluation run; proxy eval should shard the single 5k seed set across GPUs rather than adding extra seed blocks.
 - Use the current checkout's supported commands to realize the 5k proxy and the 50k paper run. Do not invent stale or unsupported commands.
 
 ---
@@ -313,14 +314,8 @@ Use the canonical claim command:
 uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1
 ```
 Execution note:
-- use all idle gpus for generation
-- If NCCL multi-process FID fails due to the container `/dev/shm` limit (64MB),
-  the paper-path run may be executed as:
-
-  1. **generation distributed across all currently idle GPUs**, and
-  2. **FID computed in a single-process run (gloo backend)**.
-
-- Generation may therefore use multiple GPUs even if the FID stage runs on 1 GPU.
+- use all idle gpus for generation and fid calculation(if we can)
+- use nccl backend(we have 32g shm)
 
 Rules:
 

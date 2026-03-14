@@ -33,3 +33,4 @@ literature/pdfs/*
 !literature/pdfs/.gitkeep
 assets/detectors/*
 !assets/detectors/.gitkeep
+archive/*

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +34,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--ref-stats", default=str(DEFAULT_REF))
     parser.add_argument("--seed-file", default="", help="Override the default seed file for the split.")
     parser.add_argument("--num-images", type=int, default=0)
+    parser.add_argument(
+        "--gpus",
+        type=int,
+        default=0,
+        help="Number of visible GPUs to use. Defaults to all visible GPUs when running on CUDA.",
+    )
     parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--status", default="keep", choices=("keep", "discard", "crash"))
     parser.add_argument("--notes", default="")
@@ -44,6 +52,88 @@ def resolve_device(value: str) -> torch.device:
     if value:
         return torch.device(value)
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def visible_gpu_count() -> int:
+    if not torch.cuda.is_available():
+        return 0
+    return torch.cuda.device_count()
+
+
+def resolve_process_count(device: torch.device, requested_gpus: int) -> int:
+    if requested_gpus < 0:
+        raise ValueError("gpus must be non-negative")
+    if device.type != "cuda":
+        return 1
+    visible_gpus = visible_gpu_count()
+    if visible_gpus < 1:
+        return 1
+    if requested_gpus == 0:
+        return visible_gpus
+    if requested_gpus > visible_gpus:
+        raise ValueError(
+            f"Requested {requested_gpus} GPUs but only {visible_gpus} visible CUDA devices are available."
+        )
+    return requested_gpus
+
+
+def distributed_prefix(python_executable: str, gpus: int) -> list[str]:
+    if gpus < 1:
+        raise ValueError("gpus must be at least 1")
+    return [
+        python_executable,
+        "-m",
+        "torch.distributed.run",
+        "--standalone",
+        "--nproc_per_node",
+        str(gpus),
+    ]
+
+
+def distributed_world_size() -> int:
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        return torch.distributed.get_world_size()
+    return int(os.environ.get("WORLD_SIZE", "1"))
+
+
+def distributed_rank() -> int:
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        return torch.distributed.get_rank()
+    return int(os.environ.get("RANK", "0"))
+
+
+def is_primary_process() -> bool:
+    return distributed_rank() == 0
+
+
+def maybe_launch_distributed(args: argparse.Namespace, process_count: int, device: torch.device) -> int | None:
+    if distributed_world_size() > 1 or process_count <= 1 or device.type != "cuda":
+        return None
+    command = distributed_prefix(sys.executable, process_count) + [str(Path(__file__).resolve()), *sys.argv[1:]]
+    completed = subprocess.run(command, cwd=REPO_ROOT, check=False)
+    return int(completed.returncode)
+
+
+def initialize_distributed(device: torch.device) -> torch.device:
+    world_size = distributed_world_size()
+    if world_size <= 1:
+        return device
+    local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+    if device.type == "cuda":
+        torch.cuda.set_device(local_rank)
+    if not torch.distributed.is_initialized():
+        backend = os.environ.get("EDM_DIST_BACKEND", "")
+        if not backend:
+            backend = "gloo"
+        torch.distributed.init_process_group(backend=backend, init_method="env://")
+    if device.type == "cuda":
+        return torch.device("cuda", local_rank)
+    return device
+
+
+def shutdown_distributed() -> None:
+    if torch.distributed.is_available() and torch.distributed.is_initialized():
+        torch.distributed.destroy_process_group()
 
 
 def utc_now_iso() -> str:
@@ -81,6 +171,41 @@ def batched(items: list[int], batch_size: int) -> Iterable[list[int]]:
         yield items[index : index + batch_size]
 
 
+def shard_seed_batches(
+    seeds: list[int],
+    batch_size: int,
+    world_size: int,
+    rank: int,
+) -> tuple[list[list[int]], list[list[int]], list[int]]:
+    if world_size <= 1:
+        all_batches = list(batched(seeds, batch_size))
+    else:
+        num_batches = ((len(seeds) - 1) // (batch_size * world_size) + 1) * world_size
+        all_batches = [chunk.tolist() for chunk in torch.as_tensor(seeds, dtype=torch.int64).tensor_split(num_batches)]
+    rank_batches = all_batches[rank::world_size]
+    prefix_counts = [0]
+    for batch in all_batches:
+        prefix_counts.append(prefix_counts[-1] + len(batch))
+    return all_batches, rank_batches, prefix_counts
+
+
+def all_reduce_tensor(value: torch.Tensor) -> torch.Tensor:
+    if distributed_world_size() > 1:
+        torch.distributed.all_reduce(value)
+    return value
+
+
+def max_peak_vram_mb(device: torch.device) -> float:
+    if device.type != "cuda":
+        return 0.0
+    peak_vram_mb = float(torch.cuda.max_memory_allocated(device)) / (1024 * 1024)
+    if distributed_world_size() <= 1:
+        return peak_vram_mb
+    peak_tensor = torch.tensor([peak_vram_mb], dtype=torch.float64)
+    torch.distributed.all_reduce(peak_tensor, op=torch.distributed.ReduceOp.MAX)
+    return float(peak_tensor.item())
+
+
 def evaluate_sampler(
     sampler_name: str,
     split: str,
@@ -99,21 +224,29 @@ def evaluate_sampler(
     ref_mu, ref_sigma = load_ref_stats(str(ref_path))
     fid_by_nfe: dict[int, float] = {}
     commit = current_commit()
+    world_size = distributed_world_size()
+    rank = distributed_rank()
+    all_batches, rank_batches, prefix_counts = shard_seed_batches(seeds, batch_size, world_size, rank)
     total_images = len(seeds)
-    total_batches = max((total_images + batch_size - 1) // batch_size, 1)
+    total_batches = max(len(rank_batches), 1)
     progress_interval = max(total_batches // 4, 1)
 
     for nfe in nfes:
         nfe_start = time.perf_counter()
-        log_field(f"nfe_{nfe}_start_time_utc", utc_now_iso())
+        if is_primary_process():
+            log_field(f"nfe_{nfe}_start_time_utc", utc_now_iso())
         sampler = BUILTIN_SAMPLERS[sampler_name]()
-        feature_sum = None
-        feature_sum_outer = None
-        feature_count = 0
+        feature_dim = int(ref_mu.shape[0])
+        feature_sum = torch.zeros(feature_dim, dtype=torch.float64)
+        feature_sum_outer = torch.zeros((feature_dim, feature_dim), dtype=torch.float64)
+        feature_count = torch.zeros(1, dtype=torch.float64)
         last_trace = None
         preview_images = None
+        diagnostic_images = None
 
-        for batch_index, batch_seeds in enumerate(batched(seeds, batch_size), start=1):
+        for batch_index, batch_seeds in enumerate(rank_batches, start=1):
+            if not batch_seeds:
+                continue
             latents = latent_batch_from_seeds(batch_seeds, adapter.image_shape(), device=device)
             cfg = SamplerConfig(
                 nfe=nfe,
@@ -132,29 +265,35 @@ def evaluate_sampler(
                 )
             images = output.images.detach()
             features = extract_features(images).to(dtype=torch.float64, device="cpu")
-            if feature_sum is None:
-                feature_sum = torch.zeros(features.shape[1], dtype=torch.float64)
-                feature_sum_outer = torch.zeros((features.shape[1], features.shape[1]), dtype=torch.float64)
             feature_sum += features.sum(dim=0)
             feature_sum_outer += features.T @ features
             feature_count += features.shape[0]
-            if preview_images is None:
+            if is_primary_process() and preview_images is None:
                 preview_images = images[:64].cpu()
-            last_trace = output.trace
-            if (
+            if is_primary_process():
+                diagnostic_images = images
+                last_trace = output.trace
+            if is_primary_process() and (
                 batch_index == 1
                 or batch_index == total_batches
                 or batch_index % progress_interval == 0
             ):
-                processed_images = min(batch_index * batch_size, total_images)
+                processed_batches = min(batch_index * world_size, len(all_batches))
+                processed_images = prefix_counts[processed_batches]
                 elapsed_s = time.perf_counter() - nfe_start
                 log_field(
                     f"nfe_{nfe}_progress",
                     f"{processed_images}/{total_images} images ({batch_index}/{total_batches} batches) elapsed_s={elapsed_s:.1f}",
                 )
 
-        mu = feature_sum / feature_count
-        sigma = (feature_sum_outer - feature_count * torch.outer(mu, mu)) / max(feature_count - 1, 1)
+        feature_sum = all_reduce_tensor(feature_sum)
+        feature_sum_outer = all_reduce_tensor(feature_sum_outer)
+        feature_count = all_reduce_tensor(feature_count)
+        if not is_primary_process():
+            continue
+        count = int(feature_count.item())
+        mu = feature_sum / count
+        sigma = (feature_sum_outer - count * torch.outer(mu, mu)) / max(count - 1, 1)
         fid = frechet_distance(mu.numpy(), sigma.numpy(), ref_mu, ref_sigma)
         fid_by_nfe[nfe] = float(fid)
         log_field(f"fid_N{nfe}", f"{fid_by_nfe[nfe]:.4f}")
@@ -166,12 +305,12 @@ def evaluate_sampler(
                 preview_images,
                 REPO_ROOT / "artifacts" / "samples" / commit / sampler_name / split / f"nfe_{nfe}.png",
             )
-        if save_diagnostics:
+        if save_diagnostics and diagnostic_images is not None:
             diagnostics = {
                 "sampler": sampler_name,
                 "split": split,
                 "nfe": nfe,
-                "feature_backend": compute_feature_stats(preview_images if preview_images is not None else images),
+                "feature_backend": compute_feature_stats(preview_images if preview_images is not None else diagnostic_images),
                 "trace_keys": sorted(list(last_trace.keys())) if last_trace else [],
             }
             write_diagnostics(
@@ -179,6 +318,8 @@ def evaluate_sampler(
                 diagnostics,
             )
 
+    if not is_primary_process():
+        return {}, 0.0
     return fid_by_nfe, calc_frontier(fid_by_nfe)
 
 
@@ -235,8 +376,13 @@ def print_summary(
 
 def main() -> int:
     args = parse_args()
-    split_size = args.num_images or SPLIT_SIZES[args.split]
     device = resolve_device(args.device)
+    process_count = resolve_process_count(device, args.gpus)
+    distributed_exit_code = maybe_launch_distributed(args, process_count, device)
+    if distributed_exit_code is not None:
+        return distributed_exit_code
+    device = initialize_distributed(device)
+    split_size = args.num_images or SPLIT_SIZES[args.split]
     nfes = parse_nfe_list(args.nfe)
     checkpoint_path = Path(args.checkpoint)
     ref_path = Path(args.ref_stats)
@@ -244,14 +390,16 @@ def main() -> int:
     commit = current_commit()
 
     start = time.perf_counter()
-    log_field("start_time_utc", utc_now_iso())
-    log_field("commit", commit)
-    log_field("sampler", args.sampler)
-    log_field("split", args.split)
-    log_field("nfes", ",".join(str(nfe) for nfe in nfes))
-    log_field("num_images", split_size)
-    log_field("batch_size", args.batch_size)
-    log_field("device", str(device))
+    if is_primary_process():
+        log_field("start_time_utc", utc_now_iso())
+        log_field("commit", commit)
+        log_field("sampler", args.sampler)
+        log_field("split", args.split)
+        log_field("nfes", ",".join(str(nfe) for nfe in nfes))
+        log_field("num_images", split_size)
+        log_field("batch_size", args.batch_size)
+        log_field("device", str(device))
+        log_field("gpus", process_count)
     if device.type == "cuda":
         torch.cuda.reset_peak_memory_stats(device)
 
@@ -270,45 +418,45 @@ def main() -> int:
             save_diagnostics=args.save_diagnostics,
         )
         runtime_s = time.perf_counter() - start
-        peak_vram_mb = (
-            float(torch.cuda.max_memory_allocated(device)) / (1024 * 1024)
-            if device.type == "cuda"
-            else 0.0
-        )
-        append_result_row(
-            commit=commit,
-            sampler=args.sampler,
-            split=args.split,
-            frontier_score=frontier_score,
-            fid_by_nfe=fid_by_nfe,
-            peak_vram_mb=peak_vram_mb,
-            status=args.status,
-            notes=args.notes,
-        )
-        log_field("end_time_utc", utc_now_iso())
-        print_summary(
-            sampler=args.sampler,
-            split=args.split,
-            frontier_score=frontier_score,
-            fid_by_nfe=fid_by_nfe,
-            runtime_s=runtime_s,
-            peak_vram_mb=peak_vram_mb,
-        )
+        peak_vram_mb = max_peak_vram_mb(device)
+        if is_primary_process():
+            append_result_row(
+                commit=commit,
+                sampler=args.sampler,
+                split=args.split,
+                frontier_score=frontier_score,
+                fid_by_nfe=fid_by_nfe,
+                peak_vram_mb=peak_vram_mb,
+                status=args.status,
+                notes=args.notes,
+            )
+            log_field("end_time_utc", utc_now_iso())
+            print_summary(
+                sampler=args.sampler,
+                split=args.split,
+                frontier_score=frontier_score,
+                fid_by_nfe=fid_by_nfe,
+                runtime_s=runtime_s,
+                peak_vram_mb=peak_vram_mb,
+            )
         return 0
     except Exception as exc:
-        log_field("end_time_utc", utc_now_iso())
-        log_field("runtime_s", f"{time.perf_counter() - start:.1f}")
-        append_result_row(
-            commit=commit,
-            sampler=args.sampler,
-            split=args.split,
-            frontier_score=0.0,
-            fid_by_nfe={5: 0.0, 9: 0.0, 11: 0.0, 13: 0.0},
-            peak_vram_mb=0.0,
-            status="crash",
-            notes=f"{args.notes} {exc}".strip(),
-        )
+        if is_primary_process():
+            log_field("end_time_utc", utc_now_iso())
+            log_field("runtime_s", f"{time.perf_counter() - start:.1f}")
+            append_result_row(
+                commit=commit,
+                sampler=args.sampler,
+                split=args.split,
+                frontier_score=0.0,
+                fid_by_nfe={5: 0.0, 9: 0.0, 11: 0.0, 13: 0.0},
+                peak_vram_mb=0.0,
+                status="crash",
+                notes=f"{args.notes} {exc}".strip(),
+            )
         raise
+    finally:
+        shutdown_distributed()
 
 
 if __name__ == "__main__":
