@@ -662,3 +662,92 @@ hypothesis=a solver-neutral late schedule warp can improve the paper path on top
 expected_signature=the proxy frontier at NFE 5/9/11/13 stays effectively unchanged; if promoted straight to paper, the full paper row should improve `paper_mean`, not only produce a lucky `fid_min`
 ablation=if this wins, compare against the restored `5e43179` base with the same endpoints but the original late linear branch, and then against the opposite smooth warp direction, to isolate whether the gain is specifically from late-tail densification rather than from any smooth schedule change
 kill_condition=any unexpected low-NFE drift, any paper row softening versus `5e43179`, or any sign that the schedule warp simply recreates an older scalar schedule-tuning miss instead of delivering a cleaner full-row improvement
+
+## Session Addendum
+
+Session date: 2026-03-14
+Working paper base after schedule-law reject: `5e43179`
+Reason for new pass: the localized schedule-law family missed decisively on paper block 0, so the next rotation must come from a different direct mechanism family.
+
+## Paper Entry
+
+paper_id=forward_value_2026
+title=Are First-Order Diffusion Samplers Really Slower? A Fast Forward-Value Approach
+authors=Yuchen Jiao; Na Li; Changxiao Cai; Gen Li
+venue_or_source=arXiv
+year=2026
+url=https://arxiv.org/abs/2512.24927
+pdf_path=literature/pdfs/forward_value_2512.24927.pdf
+family=forward-value evaluation placement / first-order endpoint sampler
+why_relevant=This is a recent independently discovered direct source and the clearest orthogonal mechanism after the schedule-law miss. Its key claim is that evaluation placement can matter independently of solver order, which fits this repo's need for a simple zero-extra-NFE family that does not just add more late history terms.
+core_claim=The dominant discretization error is not controlled only by formal solver order; a first-order forward-value update that evaluates the data predictor at a cheap one-step lookahead estimate can outperform or match higher-order samplers at the same NFE.
+assumptions=The sampler can build a one-step lookahead estimate of the next state using only information from the current step; the model output can be converted to a data prediction `mu_theta`; time grids and noise schedules are known.
+complete_sampling_pseudocode=
+- Inputs: pretrained noise predictor `epsilon_theta`, time grid `t_0 > t_1 > ... > t_M`, initial noisy state `x_{t_0}`.
+- Define the associated data prediction model `mu_theta(x_t, t) = (x_t - sigma_t * epsilon_theta(x_t, t)) / alpha_t`.
+- For each step `i = 1..M`:
+- Build a one-step lookahead estimate `hat_x_{t_i}` of the next state using only information up to step `i-1`; the paper suggests a cheap vanilla first-order predictor such as one-step DDIM.
+- Evaluate the data predictor at the lookahead state and the forward time endpoint: `mu_theta(hat_x_{t_i}, t_i)`.
+- Update the current sample with the forward-value rule
+- `x_{t_i} = (sigma_{t_i} / sigma_{t_{i-1}}) * x_{t_{i-1}} - (sigma_{t_i} * alpha_{t_{i-1}} / sigma_{t_{i-1}} - alpha_{t_i}) * mu_theta(hat_x_{t_i}, t_i)`.
+- Repeat until `t_M`.
+- The lookahead can be replaced by any consistent one-step predictor; the paper also studies a hybrid augmentation that adds this mechanism on top of DPMSolver-2.
+state_variables_and_history=Current state `x_{t_i}`; lookahead estimate `hat_x_{t_i}`; time grid; data prediction `mu_theta`; optional hybrid higher-order solver state.
+nfe_accounting=One model evaluation per step for the final update plus the same cheap lookahead structure already used by a first-order sampler; in a localized adaptation on top of an existing 2-eval step, it remains zero-extra-NFE because the endpoint evaluation already exists.
+portability=direct
+repo_transfer_hypothesis=The portable version for this repo is not a full first-order global sampler swap, but a localized forward-value branch on the late approach steps before the winning `{3,4}` UniPC window, using the already available endpoint evaluation to bias the update toward forward-value transport without disturbing the low-NFE path.
+failure_or_reject_boundary=Reject any adaptation that globally downgrades the strong `5e43179` solver to a first-order method or that merely recreates the already-failed terminal exactization story. The useful transfer is localized evaluation placement, not replacing the whole sampler.
+citation_followups=DDIM; DPMSolver-2; DPMSolver-3; UniPC; convergence-order papers cited in Section 3
+status=ready
+
+## Paper Entry
+
+paper_id=ltc_accel_2025
+title=Accelerating Diffusion Sampling via Exploiting Local Transition Coherence
+authors=Shangwen Zhu; Han Zhang; Zhantao Yang; Qianyu Peng; Zhao Pu; Huangji Wang; Fan Cheng
+venue_or_source=ICCV 2025
+year=2025
+url=https://arxiv.org/abs/2503.09675
+pdf_path=literature/pdfs/ltc_accel_2503.09675.pdf
+family=transition-operator reuse / step-skipping acceleration
+why_relevant=This is a recent independently discovered training-free paper that initially looks relevant because it exploits local transition structure without network-specific assumptions. It is useful mainly as a reject boundary for this repo's frozen NFE accounting.
+core_claim=Adjacent transition operators in diffusion sampling are strongly coherent over a sizable interval, so one can estimate the current transition from neighboring steps and skip explicit denoiser evaluations to accelerate generation.
+assumptions=The method identifies an acceleration interval where adjacent transition directions have small angle; it approximates the current transition by a scaled neighboring transition and locally searches a weight parameter `w_g`; practical benefit comes from reducing the number of expensive denoiser evaluations.
+complete_sampling_pseudocode=
+- Inputs: baseline diffusion sampler with transitions `Delta x_{t+1,t}`, acceleration interval `[a, b]`, denoising progress function `phi(t)`.
+- Detect or predefine an interval where the angle between adjacent transition operators is below a threshold.
+- For a skipped step `t`, approximate the current transition by reusing the next-step transition:
+- `x_t^* = x_{t+1} + w_g * gamma * Delta x_{t+2,t+1}`.
+- Set `gamma = (phi(t) - phi(t+1)) / (phi(t+1) - phi(t+2))`.
+- Estimate `w_g` by minimizing the discrepancy between the approximated transition and the true transition, with an optional local search across the full acceleration interval.
+- Replace true denoiser evaluations inside the acceleration interval with the approximated transitions.
+- Outside the interval, run the original sampler unchanged.
+state_variables_and_history=Current and adjacent transition operators; acceleration interval; progress ratio `gamma`; locally searched weight `w_g`.
+nfe_accounting=The point of the method is to skip denoiser evaluations and gain wall-clock speed, so it changes the effective computation contract even when nominal step counts are reported.
+portability=incompatible
+repo_transfer_hypothesis=The only portable lesson is that late-step transition directions can be highly redundant, but the actual LTC mechanism is out of scope here because it achieves its benefit by skipping explicit model evaluations instead of spending the fixed NFE budget more intelligently.
+failure_or_reject_boundary=Reject direct use because this repo's contract is fixed-NFE sampler research, not step-skipping acceleration. Any faithful LTC adaptation would either change true NFE accounting or require a different benchmark contract.
+citation_followups=DeepCache; Align Your Steps; DDIM; DPM-Solver
+status=ready
+
+## Session Takeaway
+
+- `Fast Forward-Value` is the most promising new direct family after the schedule-law miss because it changes evaluation placement rather than adding another history buffer or requiring offline search.
+- `LTC-Accel` is useful mostly as a reject boundary: it is training-free, but its benefit comes from skipping denoiser evaluations, which is outside this repo's fixed-NFE contract.
+- The next clean synthesized target is therefore a localized forward-value branch that changes only how the late approach steps use the already-available endpoint evaluation, while keeping the `5e43179` pre-terminal UniPC window and terminal exact-Heun pair intact.
+
+## Candidate Card
+
+family=localized_forward_value_approach
+kind=mechanism
+external_anchor=Are First-Order Diffusion Samplers Really Slower? A Fast Forward-Value Approach (Jiao et al., 2026)
+borrowed_mechanism=replace a backward-value or symmetric late update with a forward-value update that evaluates the model at a cheap one-step lookahead estimate of the next state
+synthesis_step=keep the `5e43179` base unchanged on the `{3,4}` localized UniPC window and terminal exact-Heun pair, but on the two earlier approach steps immediately before that window use the already available endpoint evaluation to take a localized forward-value update instead of the current Heun-style blended slope
+portability=direct
+base_commit=2510eb1
+active_nf_range=paper-targeted late full-step regime only; the low-NFE frontier should remain unchanged because the branch is dormant when `num_steps < 12`
+extra_nfe=0
+hypothesis=the winning `5e43179` trajectory may still enter the `{3,4}` UniPC window with the wrong signed approach error; a localized forward-value step on the earlier approach interval could improve that entry without another history-compensation branch or a global solver swap
+expected_signature=the proxy frontier at NFE 5/9/11/13 stays effectively unchanged; if promoted to paper, block 0 should improve over `1.93345` or at least show a clear same-sign move before spending more paper budget
+ablation=if this wins, compare against the same window with the existing Heun-style blended slope and against a pure endpoint-Euler variant with no lookahead reuse, to isolate whether the gain is truly from forward-value placement
+kill_condition=any paper block-0 loss that looks like another large translation failure, any unexpected low-NFE drift, or a result that is indistinguishable from the already-rejected late schedule-law family
