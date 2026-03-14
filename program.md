@@ -1,13 +1,15 @@
 # sampler-autoresearch
 
 ## Mission
-Discover a **simple, literature-grounded, training-free sampler mechanism** that beats Heun on the authoritative paper path for unconditional CIFAR-10:
+Discover a **simple, literature-grounded, training-free sampler mechanism** — preferably a clean new idea synthesized for this repo rather than a verbatim transplant — that beats Heun on the authoritative paper path for unconditional CIFAR-10:
 
 ```bash
 uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1
 ```
 
 You are doing **sampler mechanism research**, not benchmark gardening. A proxy win matters only if it translates to `NFE=35`, and then survives the official paper path.
+
+Literature is a tool for proposing better ideas in this repo, not the endpoint. You may reproduce an external method when it is useful, but only in service of learning, calibration, ablation, or the design of a stronger repo-suited idea.
 
 ---
 
@@ -57,7 +59,7 @@ A frontier improvement that worsens the higher tiers is not a real promotion.
 At the start of every session:
 
 1. Read `README.md`, `AGENTS.md`, `program.md`, `sample.py`, and `paper_eval.py`.
-2. Read `results.tsv`, `standard.tsv`, `paper_results.tsv`, and `experiment_reports.tsv` if they exist.
+2. Read `results.tsv`, `standard.tsv`, `paper_results.tsv`, `literature_report.tsv` and `experiment_reports.tsv` if they exist.
 3. Derive these references from the current checkout:
    - `frontier_heun_ref`
    - `frontier_research_best`
@@ -71,13 +73,17 @@ At the start of every session:
    - else `frontier_research_best`
 5. If the current `sample.py` does **not** match `working_base`, restore or reconstruct `working_base` before testing a new idea.
 6. Inspect recent **research** commits and the latest report rows so you do not repeat a dead family.
+7. Complete a **session literature pass** and write the required research map before any serious edit, candidate card, or evaluation run.
 
-A frontier-only curiosity must not replace a stronger translation or paper-qualified base.
+Rules:
+
+- A frontier-only curiosity must not replace a stronger translation or paper-qualified base.
+- A session literature pass is a **hard gate**: no edit to `sample.py`, no candidate card, and no evaluation run until it is done.
 
 ---
 
 ## Mandatory external research stage
-The agent must actively use web search for current sampler research.
+The agent must actively use web search for current sampler research. Repo-local notes, user-provided papers, provided links, and model memory are seeds, not substitutes.
 
 Do a literature pass at the start of every session, and again whenever:
 
@@ -89,7 +95,10 @@ For each literature pass:
 
 1. Read **3 to 5** relevant external papers or high-quality public method docs.
 2. Prefer sources from arXiv, OpenReview, NeurIPS/ICLR/ICML/CVPR proceedings, or official code repos.
-3. Write a short research map with one row per candidate family:
+3. Do **not** limit the pass to methods, papers, or links already named in this repo, prompt, or old notes.
+4. At least **2** sources in each pass must be independently discovered external sources that were **not** already listed in the repo or the immediate task prompt.
+5. Make sure you read the full docs.
+6. Write a short research map with one row per candidate family to literature_report.tsv(if they do not exist, create one):
 
 ```text
 family | external_anchor | portability | extra_nfe | active_nf_range | expected_signature | reject_if
@@ -104,8 +113,23 @@ Rules:
   - `incompatible` = requires retraining, learned coefficients, extra models, or harness changes
 - Prefer `direct` families.
 - Prefer `extra_nfe = 0` families unless there is a very strong reason otherwise.
+- The literature pass is incomplete unless the research map is written down **before** any serious edit or run.
+- Internal memory of known methods does **not** satisfy this requirement; the pass must include session-fetched external sources.
 
 Do **not** rely only on repo-local paper notes or only on the active code family.
+
+---
+
+## Novelty and synthesis rule
+Literature is a tool for generating new, simple, repo-suited ideas. It is **not** enough to cycle through named methods from papers and keep trying them one by one.
+
+Rules:
+
+- Each serious literature pass must produce at least **one synthesized candidate family**: a mechanism idea that is informed by external work but explicitly adapted, simplified, combined, or redirected for this fixed-pretrained, `sample.py`-only setting.
+- Reproducing an external method is allowed only as a **calibration probe**, **translation probe**, or **ablation scaffold**.
+- If you run a near-direct reproduction, you must state what it is teaching you and what new mechanism idea it enables next.
+- A session is not successful if it only replays named literature methods without producing a sharper reject boundary, a portability lesson, or a new candidate mechanism.
+- Prefer one clean synthesized idea over a long queue of superficial reproductions.
 
 ---
 
@@ -118,6 +142,8 @@ Required fields:
 family=
 kind=mechanism|tuning
 external_anchor=
+borrowed_mechanism=
+synthesis_step=
 portability=direct|partial|incompatible
 base_commit=
 active_nf_range=
@@ -133,6 +159,9 @@ Rules:
 - One candidate card = one idea.
 - `family` must describe a mechanism family, not a commit hash.
 - `kind=tuning` is allowed only if it is anchored to a live mechanism family.
+- `external_anchor` must cite a real external method, paper, or public method doc.
+- `borrowed_mechanism` must state what specific idea is being imported from the anchor.
+- `synthesis_step` must state what is new, simplified, combined, or redirected for this repo relative to the anchor; if the candidate is a near-direct reproduction, write `none` and justify the probe value.
 - If you cannot explain the idea in this format, the idea is not ready.
 
 ---
@@ -230,11 +259,12 @@ Use these rules strictly:
 6. After **2 misses** in the same family, rotate unless the next step is a clearly justified ablation.
 7. After **2 paper_micro_wins** in the same family, simplify or rotate. Do not keep stacking gates and knobs indefinitely.
 8. If a family needs many unrelated patches to survive, that is evidence against the family.
+9. After **2 reproduction/probe candidates** from literature without yielding a clear synthesized family, stop replaying names from the literature; write down a new mechanism idea or rotate.
 
 ---
 
 ## Priority family queue
-Default queue unless evidence clearly says otherwise:
+Default queue unless evidence clearly says otherwise. This queue is a **search prior**, not a closed menu; literature may surface a better family and justify reordering it.
 
 1. **UniPC-style zero-extra-NFE corrector family**
 2. **DPM-Solver / DEIS style dedicated diffusion ODE solver family**
@@ -287,6 +317,12 @@ Each report row must state:
 - mechanistic takeaway
 - concrete next action
 
+If a literature pass occurred since the last report, also state:
+
+- the main `external_anchor` set consulted,
+- the portability takeaway,
+- and the synthesized idea or reject boundary it produced.
+
 The purpose of the report is to compress learning, not to merely log that a run happened.
 
 ---
@@ -312,8 +348,12 @@ Do **not**:
 - keep editing on top of an unverified weaker base,
 - stay trapped in one family because it is easy to tune,
 - skip literature search and reinvent old sampler ideas blindly,
+- limit literature search to repo-provided or already-named methods,
+- treat literature search as a box-checking ritual,
+- replay named methods from papers without extracting a repo-suited mechanism idea,
 - claim poster-level progress without a paper-path win over Heun,
 - bury the real idea under many unrelated stabilizers.
 
 The goal is not to produce a complicated sampler.
+The goal is not to reproduce a literature survey inside `sample.py`.
 The goal is to produce a **defensible, simple, externally grounded mechanism** that survives the official evaluation path.
