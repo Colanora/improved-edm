@@ -1016,3 +1016,19 @@ hypothesis=the current paper winner may only need extra exactness on the single 
 expected_signature=the proxy frontier at NFE 5/9/11/13 stays inside the current stable band while `fid_N35` improves below `6.7513`; if promoted, paper block 0 should beat `1.93345` or at least show a cleaner same-sign move than the recent misses
 ablation=if this wins, compare against the same code path with the curvature threshold raised high enough to disable the gate, to isolate the gain from the adaptive trigger rather than from incidental refactoring
 kill_condition=any `fid_N35` regression, any low-NFE drift outside the stable band, or any paper block-0 miss that looks like another clear translation failure
+
+## Candidate Card
+
+family=localized_dpm_solver2_preterminal_midpoint
+kind=mechanism
+external_anchor=DPM-Solver (Lu et al., 2022); Formalizing the Sampling Design Space of Diffusion-Based Generative Models via Adaptive Solvers and Wasserstein-Bounded Timesteps (Jo & Choi, 2026)
+borrowed_mechanism=replace one late higher-order step with a dedicated lambda-midpoint DPM-Solver-2 update that analytically targets the diffusion ODE structure rather than using a generic endpoint corrector
+synthesis_step=keep the exact `5e43179` base everywhere except the first pre-terminal `{steps_left=4}` UniPC step; on that single step, replace the local UniPC correction with a VE-form DPM-Solver-2 midpoint update in log-SNR/lambda midpoint sigma, while preserving the second `{steps_left=3}` UniPC step and the last two exact-Heun stages
+portability=direct
+base_commit=24aa494
+active_nf_range=paper-targeted full-step regime only; the branch is dormant when `num_steps < 12`, so NFE 5/9/11/13 should remain unchanged
+extra_nfe=0
+hypothesis=the two-step `{3,4}` paper-qualified window may still need two distinct late mechanisms: a dedicated midpoint exponential-integrator step at `{4}` to enter the terminal zone cleanly, followed by the existing history-aware UniPC correction at `{3}`
+expected_signature=the proxy frontier at NFE 5/9/11/13 stays inside the current stable band; if promoted, paper block 0 should improve over `1.93345` or at least beat the recent exactization miss and justify a full-row continuation
+ablation=if this wins, compare against the same code path with the midpoint branch disabled so `{4}` falls back to the original UniPC step, isolating whether the gain comes from the midpoint solver itself rather than from refactoring
+kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper block-0 result that clearly trails the `5e43179` base

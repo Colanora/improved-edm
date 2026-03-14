@@ -20,6 +20,7 @@ RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
 RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT = (3, 4)
+RESEARCH_STANDARD_LOCAL_DPM_SOLVER_STEPS_LEFT = (4,)
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -128,6 +129,18 @@ def research_step_local_unipc_corrector(num_steps: int, device: torch.device) ->
     return step_local_unipc_corrector
 
 
+def research_step_local_dpm_solver_midpoint(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_local_dpm_solver_midpoint = torch.zeros(num_steps, dtype=torch.bool, device=device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return step_local_dpm_solver_midpoint
+    terminal_end = num_steps - 1
+    for steps_left in RESEARCH_STANDARD_LOCAL_DPM_SOLVER_STEPS_LEFT:
+        step_index = terminal_end - steps_left
+        if 0 <= step_index < terminal_end:
+            step_local_dpm_solver_midpoint[step_index] = True
+    return step_local_dpm_solver_midpoint
+
+
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
@@ -188,6 +201,7 @@ def research_sampler(
     step_corrector_memory = research_step_corrector_memory(num_steps, latents.device)
     step_terminal_exact_heun = research_step_terminal_exact_heun(num_steps, latents.device)
     step_local_unipc_corrector = research_step_local_unipc_corrector(num_steps, latents.device)
+    step_local_dpm_solver_midpoint = research_step_local_dpm_solver_midpoint(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
     prev_d_cur = None
     prev_d_prime = None
@@ -209,6 +223,17 @@ def research_sampler(
 
         if i == num_steps - 1:
             x_next = x_euler
+            continue
+
+        if bool(step_local_dpm_solver_midpoint[i]):
+            lambda_mid_sigma = net.round_sigma((t_hat * t_next).sqrt())
+            x_mid = x_hat + (lambda_mid_sigma - t_hat) * d_cur
+            denoised = net(x_mid, lambda_mid_sigma, class_labels).to(torch.float64)
+            d_mid = (x_mid - denoised) / lambda_mid_sigma
+            x_next = x_hat + h * d_mid
+            prev_d_cur = d_cur.detach()
+            prev_d_prime = d_mid.detach()
+            prev_h = h.detach()
             continue
 
         predictor_d = d_cur
