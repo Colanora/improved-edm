@@ -238,3 +238,19 @@ hypothesis=the history-aware curvature fix may be concentrated on the last stand
 expected_signature=`fid_N35` stays clearly better than the endpoint-Heun-only ablation and remains close enough to `5e43179` to justify the simpler story, with unchanged NFE 5/9/11/13
 ablation=if the one-step window softens materially, keep the two-step `5e43179` window as the minimal defensible mechanism
 kill_condition=any low-NFE drift or any `fid_N35` result that falls back near the endpoint-Heun-only ablation boundary
+
+## Candidate Card
+
+family=localized_unipc_preterminal_corrector
+kind=simplification
+external_anchor=UniPC (Zhao et al., 2023)
+borrowed_mechanism=keep the history-aware corrector but test whether only the earlier of the two pre-terminal standard-regime steps carries the transferable gain
+synthesis_step=from `5e43179`, shrink `RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT` from `(3, 4)` to `(4,)` while leaving the localized history-aware slope, predictor scale, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=5e43179
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain unchanged because the branch is still inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the proxy-only success of `{3}` but paper loss on block 0 suggests the paper-side gain may be entering through the earlier pre-terminal correction, not the final one; a `{4}`-only window could therefore be a simpler paper-faithful mechanism
+expected_signature=`fid_N35` stays below the endpoint-Heun-only ablation and remains near the two-step base closely enough to justify a paper check, with unchanged NFE 5/9/11/13
+ablation=if the `{4}`-only window also misses, keep the two-step `5e43179` window as the minimal paper-qualified story
+kill_condition=any low-NFE drift or any `fid_N35` result that falls back near the endpoint-Heun-only ablation boundary
