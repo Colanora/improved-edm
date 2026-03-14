@@ -1238,3 +1238,19 @@ hypothesis=the `3d0ecd6` win may contain a real midpoint-direction benefit but s
 expected_signature=the low-NFE proxy band should stay inside the usual dormant range; if promoted, paper block 0 should beat `1.92757` or at least sit materially closer to the base than the `{3}`-placement and `{3,4}`-widening ablation losses
 ablation=if this wins, rerun with the trust shrink disabled to recover exact `3d0ecd6`, and with a fixed constant shrink weight, to verify that adaptive embedded-error control rather than simple under-relaxation is the active ingredient
 kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper block-0 result that clearly loses to `3d0ecd6`
+
+## Candidate Card
+
+family=embedded_proximal_midpoint_trust_region
+kind=tuning
+external_anchor=Proximal Diffusion Neural Sampler (Guo et al., 2025); Rex: A Family of Reversible Exponential (Stochastic) Runge-Kutta Solvers (Blasingame & Liu, 2026)
+borrowed_mechanism=keep the same embedded Euler-versus-midpoint trust-region idea but weaken the maximum proximal shrink after the first full-row result showed a small, same-sign over-damping
+synthesis_step=from the restored `3d0ecd6` base, reintroduce the embedded midpoint trust-region branch exactly as in `5ef8741` but reduce the maximum shrink cap from `0.35` to `0.20`, leaving the disagreement formula and every other sampler component untouched
+portability=direct
+base_commit=f45c798
+active_nf_range=paper-targeted full-step regime only; the branch remains dormant when `num_steps < 12`
+extra_nfe=0
+hypothesis=if the first trust-region probe lost only because it damped the good midpoint correction too aggressively, then a smaller cap should preserve the near-tie behavior while giving back enough midpoint strength to beat the `3d0ecd6` mean
+expected_signature=the low-NFE proxy band should remain in the usual dormant range; if promoted, the paper row should stay near the incumbent on blocks 0 and 1 while improving block 2 enough to recover the mean gap
+ablation=this is the one allowed scalar follow-up after the initial full-row near-tie; if it also loses, stop tuning the trust cap and rotate away from the family
+kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper row that remains clearly worse than the `3d0ecd6` base
