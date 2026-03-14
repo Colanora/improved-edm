@@ -29,3 +29,5 @@ artifacts/logs/**/*.log
 artifacts/logs/**/*.out
 artifacts/logs/**/*.err
 artifacts/paper_eval_candidates/*
+literature/pdfs/*
+!literature/pdfs/.gitkeep
