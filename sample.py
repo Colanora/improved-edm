@@ -11,11 +11,10 @@ RESEARCH_STANDARD_RHO = 6.5
 RESEARCH_STANDARD_STEP_THRESHOLD = 12
 RESEARCH_STANDARD_STEP_PIVOT = 0.55
 RESEARCH_STANDARD_SIGMA_PIVOT = 0.50
-RESEARCH_STANDARD_LATE_STEP_CURVATURE = 0.92
 RESEARCH_STANDARD_ALPHA_SIGMA_START = 0.5
 RESEARCH_STANDARD_MAX_ALPHA = 0.96
 RESEARCH_STANDARD_PREDICTOR_START = 0.30
-RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.16
+RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 RESEARCH_STANDARD_PREDICTOR_EXTRAPOLATION_SCALE = 0.75
 RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
@@ -45,8 +44,8 @@ def research_step_fractions(num_steps: int, device: torch.device) -> torch.Tenso
         return step_fraction
     early = step_fraction <= RESEARCH_STANDARD_STEP_PIVOT
     early_scale = RESEARCH_STANDARD_SIGMA_PIVOT / RESEARCH_STANDARD_STEP_PIVOT
-    late_progress = ((step_fraction - RESEARCH_STANDARD_STEP_PIVOT) / (1.0 - RESEARCH_STANDARD_STEP_PIVOT)).clamp(0.0, 1.0)
-    late_progress = late_progress.pow(RESEARCH_STANDARD_LATE_STEP_CURVATURE)
+    late_fraction = ((step_fraction - RESEARCH_STANDARD_STEP_PIVOT) / (1.0 - RESEARCH_STANDARD_STEP_PIVOT)).clamp(0.0, 1.0)
+    late_progress = 1.0 - torch.cos(0.5 * torch.pi * late_fraction)
     return torch.where(
         early,
         step_fraction * early_scale,
@@ -145,6 +144,20 @@ def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
     return RESEARCH_ALPHA + late_mix * (RESEARCH_STANDARD_MAX_ALPHA - RESEARCH_ALPHA)
 
 
+def research_local_unipc_corrector_slope(
+    d_prev: torch.Tensor,
+    d_cur: torch.Tensor,
+    d_prime: torch.Tensor,
+    step_ratio: torch.Tensor,
+) -> torch.Tensor:
+    denom = 6.0 * (step_ratio + 1.0)
+    return (
+        ((2.0 * step_ratio + 3.0) / denom) * d_prime
+        + ((step_ratio + 3.0) / 6.0) * d_cur
+        - (step_ratio.square() / denom) * d_prev
+    )
+
+
 def research_sampler(
     net,
     latents,
@@ -229,10 +242,14 @@ def research_sampler(
         denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
         t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
         d_prime = (x_prime - denoised) / t_prime
-        corrected_slope = (1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime
-        if not local_unipc and prev_d_prime is not None:
-            memory = memory_flat.view(-1, *([1] * (d_cur.ndim - 1)))
-            corrected_slope = corrected_slope + memory * (d_prime - prev_d_prime)
+        if local_unipc:
+            step_ratio = (h / prev_h).to(dtype=torch.float64)
+            corrected_slope = research_local_unipc_corrector_slope(prev_d_cur, d_cur, d_prime, step_ratio)
+        else:
+            corrected_slope = (1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime
+            if prev_d_prime is not None:
+                memory = memory_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+                corrected_slope = corrected_slope + memory * (d_prime - prev_d_prime)
         x_heun = x_hat + h * corrected_slope
         relax = relax_flat.view(-1, *([1] * (x_heun.ndim - 1)))
         x_next = x_heun + relax * (x_euler - x_heun)

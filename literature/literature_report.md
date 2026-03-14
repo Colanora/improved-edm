@@ -509,3 +509,156 @@ hypothesis=the adaptive selector may simply be too noisy with only one-step hist
 expected_signature=`fid_N35 < 6.7513` with the low-step band effectively unchanged; if it loses again, the ERA family should be closed after two misses
 ablation=this is the complementary one-sided ablation to the failed adaptive selector; the other endpoint is already represented by the base sampler's default prev_d_cur history
 kill_condition=any `fid_N35` regression versus `5e43179`, any low-NFE drift outside the stable band, or a result that lands in the same miss band as the adaptive ERA screen
+
+## Session Addendum
+
+Session date: 2026-03-14
+Working paper base for this pass: `5e43179`
+Reason for new pass: the post-`5e43179` late-compensation / x_theta / ERA branch has multiple clean misses, so `program.md` requires a fresh literature pass before the next family change.
+
+## Paper Entry
+
+paper_id=align_your_steps_2024
+title=Align Your Steps: Optimizing Sampling Schedules in Diffusion Models
+authors=Amirmojtaba Sabour; Sanja Fidler; Karsten Kreis
+venue_or_source=ICML 2024 / arXiv
+year=2024
+url=https://arxiv.org/abs/2404.14507
+pdf_path=literature/pdfs/align_your_steps_2404.14507.pdf
+family=schedule optimization / solver-aware time discretization
+why_relevant=This is the strongest direct literature anchor for treating the sampling schedule itself as a first-class mechanism rather than a frozen backdrop. It is especially relevant now that the active solver family is strong and the next orthogonal move should change the time law instead of adding another late corrector.
+core_claim=Sampling schedules are highly suboptimal when left hand-crafted; optimizing the schedule for a fixed solver and pretrained model can substantially improve output quality, with especially large gains in few-step regimes and smaller but still real gains at higher NFE.
+assumptions=The method can estimate a KL upper bound between the true learned reverse process and a discretized solver-specific process; it can iterate over intermediate schedule points with Monte Carlo estimates and use early stopping to avoid overfitting path alignment at the expense of final output quality.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model `D_theta`, chosen solver family, fixed endpoints `t_min, t_max`, initial hand-crafted schedule `t_0 < ... < t_n`, sample subset for Monte Carlo KLUB estimation.
+- For each solver interval `[t_{i-1}, t_i]`, define a discretized learned SDE/ODE whose drift freezes the solver's denoiser evaluation pattern on that interval.
+- Estimate the per-interval KL upper bound `KLUB(t_{i-1}, t_i)` by drawing noisy states from the forward process and Monte Carlo integrating the squared denoiser mismatch inside the interval.
+- Sum these interval costs to obtain the total objective `sum_i KLUB(t_{i-1}, t_i)`.
+- Iteratively optimize the intermediate schedule points `t_1 ... t_{n-1}`:
+- Select one interior point `t_i`, discretize a neighborhood between `t_{i-1}` and `t_{i+1}`, evaluate the KLUB objective for the candidates, and replace `t_i` with the best candidate.
+- Repeat over all interior points for multiple passes, using early stopping based on output-quality validation because excessive KLUB minimization can improve path alignment while worsening final samples.
+- Hierarchically subdivide the optimized low-step schedule to higher-step schedules by inserting midpoints in log-sigma space, then fine-tune only the new points while keeping older points fixed.
+- For arbitrary target step counts, interpolate the final optimized schedule as a piecewise log-linear sigma curve.
+- Run the original solver unchanged on the optimized schedule.
+state_variables_and_history=Schedule vector `t_i`; per-interval KLUB values; solver-specific frozen denoiser evaluations inside each interval; validation metric for early stopping.
+nfe_accounting=No extra NFE at sampling time once a schedule is chosen, but obtaining the schedule requires an offline Monte Carlo search loop over many candidate schedules.
+portability=partial
+repo_transfer_hypothesis=The portable lesson is that schedule law remains an underused lever even after the solver mechanics are strong. In this repo the direct transfer is not the offline KLUB search itself, but a simple fixed late-regime schedule warp inspired by the optimized shapes.
+failure_or_reject_boundary=Reject any candidate that depends on offline schedule search, manual early-stopping sweeps, or solver-specific KLUB estimation machinery outside `sample.py`. Use this paper as a schedule-law generator, not as a method to reproduce verbatim.
+citation_followups=EDM; DPM-Solver; DPM-Solver++; ER-SDE-Solver; learning-to-schedule literature
+status=ready
+
+## Paper Entry
+
+paper_id=optimal_stepsize_2025
+title=Optimal Stepsize for Diffusion Sampling
+authors=Jianning Pei; Han Hu; Shuyang Gu
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2503.21774
+pdf_path=literature/pdfs/optimal_stepsize_2503.21774.pdf
+family=dynamic-programming stepsize distillation
+why_relevant=This is a recent independently discovered paper that sharpens the modern schedule-law story. It argues that stepsize selection should be optimized globally against a high-step teacher trajectory, not only locally by heuristic spacing.
+core_claim=The stepsize schedule can be derived by a dynamic-programming distillation problem in which an `M`-step student trajectory recursively approximates an `N`-step teacher trajectory; the resulting schedules are robust across architectures, solver orders, and noise schedules.
+assumptions=A teacher trajectory with many denoising steps is available; student updates can be compared to teacher states; the objective is recursive in the number of student steps; optional amplitude calibration statistics can be precomputed from teacher/student trajectories.
+complete_sampling_pseudocode=
+- Inputs: pretrained denoiser `D_theta`, teacher solver with `N` steps, desired student step count `M`, distance metric between teacher and student states.
+- Generate the teacher trajectory `x[N], x[N-1], ..., x[0]` with the high-step solver.
+- Define the DP subproblem `z[i][j]`: the best `i`-step student approximation to teacher state `x[j]`.
+- Initialize `z[0][N]` with the starting noise and all other impossible states with infinity.
+- For each student step count `i = 1..M`:
+- For each teacher index `j`, evaluate all possible predecessor indices `k > j`.
+- Propagate one student step from `z[i-1][k]` to timestep `j` with the chosen solver update `F(z[i-1][k], v_theta, {k, j})`.
+- Compute the alignment cost to teacher state `x[j]`, choose the predecessor `k` with minimum cost, store it as `r[i][j]`, and set `z[i][j]` to that propagated state.
+- Backtrack the optimal predecessor chain from `z[M][0]` to recover the distilled step schedule.
+- Optionally calibrate late-step amplitude by applying a per-step affine rescaling that matches teacher quantile ranges.
+- Sample future inputs using the distilled average schedule or the instance-specific schedule.
+state_variables_and_history=Teacher trajectory `x[j]`; DP table `z[i][j]`; predecessor indices `r[i][j]`; chosen solver update `F`; optional per-step teacher amplitude statistics.
+nfe_accounting=Sampling-time NFE stays fixed once the schedule is distilled, but the method fundamentally depends on an offline teacher trajectory and a dynamic-programming search over candidate student trajectories.
+portability=partial
+repo_transfer_hypothesis=The direct takeaway for this repo is that the best late schedule is likely to be a globally shaped object rather than a one-point tweak. The portable version is a hand-designed late-regime schedule family that imitates the coarse shape of a distilled optimum without any offline teacher search.
+failure_or_reject_boundary=Reject any direct port that needs teacher trajectories, amplitude-calibration statistics, or a DP search stage outside the sampler. Those would violate the frozen `sample.py`-only research contract here.
+citation_followups=Align Your Steps; GITS / trajectory-regularity work; LD3; Flow Matching schedule alignment
+status=ready
+
+## Paper Entry
+
+paper_id=geometric_regularity_2025
+title=Geometric Regularity in Deterministic Sampling Dynamics of Diffusion-based Generative Models
+authors=Defang Chen; Zhenyu Zhou; Can Wang; Siwei Lyu
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2506.10177
+pdf_path=literature/pdfs/geometric_regularity_2506.10177.pdf
+family=trajectory-geometry analysis / schedule alignment
+why_relevant=This is a recent independently discovered source and the clearest theoretical explanation for why late schedule law might matter on top of an already strong solver. It links sampling schedule choice to the geometry of the denoising trajectory and the convex combination between the current state and denoising output.
+core_claim=Deterministic diffusion trajectories lie in a very low-dimensional "boomerang"-shaped subspace; curvature and torsion rise in the late middle of the reverse process and then relax near the end, and this structure can be exploited by a dynamic-programming schedule that better aligns solver time steps with the trajectory geometry.
+assumptions=The analysis is done in PF-ODE form, often after converting to a VE-style coordinate system; the denoising output approximates the optimal conditional expectation; trajectory geometry can be studied with high-NFE Euler traces or closed-form KDE arguments.
+complete_sampling_pseudocode=
+- Inputs: pretrained denoiser `r_theta`, PF-ODE time grid in sigma coordinates, chosen deterministic solver.
+- Interpret the solver update as a convex combination between the current state and a generalized denoising output:
+- `x_{n} = (sigma_n / sigma_{n+1}) * x_{n+1} + ((sigma_{n+1} - sigma_n) / sigma_{n+1}) * R_theta(x_{n+1})`.
+- Observe from high-resolution trajectories that curvature and torsion peak in a late-middle "turning" region before decaying near the terminal denoising regime.
+- Use dynamic programming to choose a small number of time steps that align better with that geometric structure, rather than relying on heuristic polynomial spacing.
+- Run the same deterministic solver on the geometry-aligned schedule.
+- For analysis, project trajectories to the endpoint displacement vector plus top orthogonal principal components to verify the boomerang structure and locate the curvature peak.
+state_variables_and_history=Sampling trajectory states; implicit denoising trajectory `r_theta(x_n)`; sigma-ratio schedule; optional projected trajectory bases and curvature/torsion diagnostics.
+nfe_accounting=The paper's accelerated sampling method keeps solver NFE fixed once a schedule is chosen, but identifying the geometry-aligned schedule uses offline trajectory analysis or dynamic-programming search.
+portability=partial
+repo_transfer_hypothesis=The most portable insight is not the paper's DP schedule search but its geometric claim: late full-step dynamics have a turning region before the terminal denoising pair, so a fixed hand-crafted late schedule warp should be judged by whether it gives the pre-terminal correction window better resolution without disturbing the frontier.
+failure_or_reject_boundary=Reject any candidate that needs offline trajectory PCA, curvature fitting, or DP search to operate. Keep only the fixed schedule-law hypothesis that can be written directly in `sample.py`.
+citation_followups=On the Trajectory Regularity of ODE-based Diffusion Sampling; Align Your Steps; EDM; DPM-Solver; guidance-in-limited-interval work
+status=ready
+
+## Paper Entry
+
+paper_id=noise_scheduling_2023
+title=On the Importance of Noise Scheduling for Diffusion Models
+authors=Ting Chen
+venue_or_source=arXiv
+year=2023
+url=https://arxiv.org/abs/2301.10972
+pdf_path=literature/pdfs/noise_scheduling_2301.10972.pdf
+family=noise schedule shape / logSNR shift
+why_relevant=This paper is not about fast samplers directly, but it provides a simple direct anchor for using monotone schedule shapes and logSNR shifts as meaningful knobs rather than arbitrary cosmetics. It also explicitly states that inference schedules do not need to match training schedules in continuous time.
+core_claim=Noise scheduling is crucial; different schedule shapes place emphasis on different noise regions, and simple logSNR shifts or cosine/sigmoid schedule shapes materially change model behavior. During inference, one can discretize time uniformly and choose a desired `gamma(t)` schedule independently.
+assumptions=Continuous-time diffusion with a schedule function `gamma(t)` or equivalent logSNR parameterization; optional variance normalization of model inputs; the denoiser can be queried under arbitrary inference-time schedule values.
+complete_sampling_pseudocode=
+- Inputs: number of sampling steps `S`, continuous schedule function `gamma(t)` or equivalent logSNR law, trained denoiser.
+- Sample the initial noisy state from a standard Gaussian.
+- For each step `s = 0 .. S-1`:
+- Set the current and next times `t_now = 1 - s / S`, `t_next = max(1 - (s+1) / S, 0)`.
+- Convert those times through the chosen schedule function `gamma(t)` (or its logSNR equivalent) to determine the noise levels of the current and next states.
+- Optionally normalize the current state before the denoiser call.
+- Evaluate the denoiser once at the current state and perform the standard DDIM/DDPM-style update toward `t_next` using the scheduled noise levels.
+- Repeat until the terminal sample is reached.
+state_variables_and_history=Current sample `x_t`; current and next times; schedule function `gamma(t)` or logSNR law; optional input-scaling factor.
+nfe_accounting=Zero extra NFE; the schedule only changes which noise levels are visited by the same number of denoiser calls.
+portability=direct
+repo_transfer_hypothesis=A simple monotone schedule warp in sigma/logSNR space is directly portable to this repo, especially when localized to the full-step standard regime so the low-NFE frontier remains unchanged.
+failure_or_reject_boundary=Reject any candidate that implicitly assumes retraining the score model under a new schedule. Only inference-time schedule reshaping is in scope here.
+citation_followups=DDPM; RIN; concurrent schedule-parameterization work; Align Your Steps
+status=ready
+
+## Session Takeaway
+
+- The new literature pass supports an orthogonal family rotation away from late history compensation and toward a schedule-law probe.
+- `Align Your Steps`, `Optimal Stepsize`, and `Geometric Regularity` all say the same high-level thing from different angles: time discretization is a meaningful mechanism, but their exact search procedures are offline and therefore only partial matches for this repo.
+- `On the Importance of Noise Scheduling` provides the clean direct hook: changing the inference-time schedule shape or logSNR emphasis alone can matter, even with the same denoiser and same NFE.
+- The portable synthesis is therefore a fixed, hand-crafted late full-step schedule warp that is solver-mechanics-neutral and leaves the low-NFE frontier untouched.
+
+## Candidate Card
+
+family=localized_schedule_law
+kind=mechanism
+external_anchor=Align Your Steps: Optimizing Sampling Schedules in Diffusion Models (Sabour et al., 2024); Geometric Regularity in Deterministic Sampling Dynamics of Diffusion-based Generative Models (Chen et al., 2025); On the Importance of Noise Scheduling for Diffusion Models (Chen, 2023)
+borrowed_mechanism=the sampling schedule changes the weighting between the current state and denoising output, and late deterministic trajectories appear to have a distinct turning region that may need different step density than the current hand-crafted late linear branch
+synthesis_step=restore the `5e43179` base exactly and leave its predictor/corrector branches untouched, but for `num_steps >= 12` replace the current standard-regime late linear sigma branch with a normalized cosine late-tail law that preserves endpoints and the early branch while smoothly reallocating more resolution to the final standard-regime approach into the `{3,4}` UniPC window and terminal exact-Heun pair
+portability=direct
+base_commit=5e43179
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should stay unchanged because the low-step schedule path remains untouched
+extra_nfe=0
+hypothesis=a solver-neutral late schedule warp can improve the paper path on top of the `5e43179` mechanism by feeding the existing pre-terminal corrector and terminal exact-Heun pair with a better-conditioned approach trajectory, without reopening the failed late-compensation family
+expected_signature=the proxy frontier at NFE 5/9/11/13 stays effectively unchanged; if promoted straight to paper, the full paper row should improve `paper_mean`, not only produce a lucky `fid_min`
+ablation=if this wins, compare against the restored `5e43179` base with the same endpoints but the original late linear branch, and then against the opposite smooth warp direction, to isolate whether the gain is specifically from late-tail densification rather than from any smooth schedule change
+kill_condition=any unexpected low-NFE drift, any paper row softening versus `5e43179`, or any sign that the schedule warp simply recreates an older scalar schedule-tuning miss instead of delivering a cleaner full-row improvement
