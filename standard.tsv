@@ -74,3 +74,4 @@ b736d56	research	proxy	35	6.8118	6.7954	0.0164	discard	predictor ablation had no
 d70b8ad	research	proxy	35	6.8020	6.7954	0.0066	discard	combined later relax with curvature gate had no frontier gain
 cbfd11a	research	proxy	35	6.7650	6.7875	-0.0225	keep	corrector-memory paper base improved proxy translation without frontier change
 5953a6c	research	proxy	35	6.7651	6.7875	-0.0224	keep	ungated corrector-memory simplification preserved proxy translation win
+e208c21	research	proxy	35	6.7578	6.7875	-0.0297	keep	localized multistep predictor improved proxy translation and promoted to paper base
