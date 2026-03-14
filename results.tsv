@@ -166,3 +166,4 @@ cc5d345	research	proxy	2.607572	27.1655	10.5608	8.9764	7.6817	2187.0	keep	midpoi
 e25220a	research	proxy	2.607540	27.1645	10.5607	8.9757	7.6817	2187.0	keep	midpoint window widening ablation sanity screen
 5ef8741	research	proxy	2.607531	27.1637	10.5602	8.9762	7.6818	2187.0	keep	midpoint trust-region shrink sanity screen
 ceeb2c1	research	proxy	2.607520	27.1638	10.5604	8.9759	7.6814	2187.0	keep	reduced midpoint trust cap sanity screen
+abb8a61	research	proxy	2.607569	27.1663	10.5605	8.9763	7.6816	2187.0	keep	localized online score-normalized approach sanity screen
