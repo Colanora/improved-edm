@@ -312,6 +312,15 @@ Use the canonical claim command:
 ```bash
 uv run paper_eval.py --sampler research --target uncond --steps 18 --gpus 1
 ```
+Execution note:
+- use all idle gpus for generation
+- If NCCL multi-process FID fails due to the container `/dev/shm` limit (64MB),
+  the paper-path run may be executed as:
+
+  1. **generation distributed across all currently idle GPUs**, and
+  2. **FID computed in a single-process run (gloo backend)**.
+
+- Generation may therefore use multiple GPUs even if the FID stage runs on 1 GPU.
 
 Rules:
 
