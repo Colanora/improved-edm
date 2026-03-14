@@ -15,6 +15,7 @@ RESEARCH_STANDARD_ALPHA_SIGMA_START = 0.5
 RESEARCH_STANDARD_MAX_ALPHA = 0.96
 RESEARCH_STANDARD_PREDICTOR_START = 0.30
 RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
+RESEARCH_STANDARD_PREDICTOR_EXTRAPOLATION_SCALE = 0.5
 RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
@@ -72,6 +73,17 @@ def research_step_predictor_mix(num_steps: int, device: torch.device) -> torch.T
         return torch.zeros_like(step_fraction)
     late_mix = ((step_fraction - RESEARCH_STANDARD_PREDICTOR_START) / (1.0 - RESEARCH_STANDARD_PREDICTOR_START)).clamp(0.0, 1.0)
     return RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM * late_mix
+
+
+def research_step_predictor_extrapolation(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_predictor_extrapolation = RESEARCH_STANDARD_PREDICTOR_EXTRAPOLATION_SCALE * research_step_predictor_mix(num_steps, device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return step_predictor_extrapolation
+    terminal_end = num_steps - 1
+    terminal_start = max(0, terminal_end - RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES)
+    step_predictor_extrapolation = step_predictor_extrapolation.clone()
+    step_predictor_extrapolation[terminal_start:terminal_end] = 0
+    return step_predictor_extrapolation
 
 
 def research_step_correction_relax(num_steps: int, device: torch.device) -> torch.Tensor:
@@ -145,6 +157,7 @@ def research_sampler(
     )
     step_alpha = research_step_alpha(num_steps, latents.device)
     step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
+    step_predictor_extrapolation = research_step_predictor_extrapolation(num_steps, latents.device)
     step_corrector_memory = research_step_corrector_memory(num_steps, latents.device)
     step_terminal_exact_heun = research_step_terminal_exact_heun(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
@@ -171,11 +184,14 @@ def research_sampler(
 
         predictor_d = d_cur
         alpha_flat = torch.full((d_cur.shape[0],), float(step_alpha[i]), dtype=torch.float64, device=d_cur.device)
+        predictor_beta_flat = torch.zeros_like(alpha_flat)
         memory_flat = torch.zeros_like(alpha_flat)
         relax_flat = torch.zeros_like(alpha_flat)
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
-            predictor_d = d_cur
+            predictor_beta_flat = torch.full_like(alpha_flat, float(step_predictor_extrapolation[i]))
+            predictor_beta = predictor_beta_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+            predictor_d = d_cur + predictor_beta * (d_cur - prev_d_cur)
             alpha_flat = RESEARCH_ALPHA + growth_gate * (step_alpha[i] - RESEARCH_ALPHA)
             memory_flat = torch.full_like(alpha_flat, float(step_corrector_memory[i]))
             relax_flat = step_correction_relax[i] * (1.0 - growth_gate)
