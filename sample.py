@@ -19,7 +19,6 @@ RESEARCH_STANDARD_PREDICTOR_EXTRAPOLATION_SCALE = 0.75
 RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
-RESEARCH_STANDARD_LOCAL_FORWARD_VALUE_STEPS_LEFT = (5, 6)
 RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT = (3, 4)
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
@@ -129,18 +128,6 @@ def research_step_local_unipc_corrector(num_steps: int, device: torch.device) ->
     return step_local_unipc_corrector
 
 
-def research_step_local_forward_value(num_steps: int, device: torch.device) -> torch.Tensor:
-    step_local_forward_value = torch.zeros(num_steps, dtype=torch.bool, device=device)
-    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
-        return step_local_forward_value
-    terminal_end = num_steps - 1
-    for steps_left in RESEARCH_STANDARD_LOCAL_FORWARD_VALUE_STEPS_LEFT:
-        step_index = terminal_end - steps_left
-        if 0 <= step_index < terminal_end:
-            step_local_forward_value[step_index] = True
-    return step_local_forward_value
-
-
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
@@ -199,7 +186,6 @@ def research_sampler(
     step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
     step_predictor_extrapolation = research_step_predictor_extrapolation(num_steps, latents.device)
     step_corrector_memory = research_step_corrector_memory(num_steps, latents.device)
-    step_local_forward_value = research_step_local_forward_value(num_steps, latents.device)
     step_terminal_exact_heun = research_step_terminal_exact_heun(num_steps, latents.device)
     step_local_unipc_corrector = research_step_local_unipc_corrector(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
@@ -230,7 +216,6 @@ def research_sampler(
         predictor_beta_flat = torch.zeros_like(alpha_flat)
         memory_flat = torch.zeros_like(alpha_flat)
         relax_flat = torch.zeros_like(alpha_flat)
-        local_forward_value = False
         local_unipc = False
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
@@ -244,13 +229,6 @@ def research_sampler(
                 alpha_flat = torch.ones_like(alpha_flat)
                 relax_flat = torch.zeros_like(relax_flat)
             elif float(step_corrector_memory[i]) == 0.0:
-                relax_flat = torch.zeros_like(relax_flat)
-            local_forward_value = bool(step_local_forward_value[i])
-            if local_forward_value:
-                predictor_d = d_cur
-                predictor_beta_flat = torch.zeros_like(predictor_beta_flat)
-                alpha_flat = torch.ones_like(alpha_flat)
-                memory_flat = torch.zeros_like(memory_flat)
                 relax_flat = torch.zeros_like(relax_flat)
             local_unipc = bool(step_local_unipc_corrector[i]) and prev_h is not None
             if local_unipc:
@@ -266,8 +244,6 @@ def research_sampler(
         if local_unipc:
             step_ratio = (h / prev_h).to(dtype=torch.float64)
             corrected_slope = research_local_unipc_corrector_slope(prev_d_cur, d_cur, d_prime, step_ratio)
-        elif local_forward_value:
-            corrected_slope = d_prime
         else:
             corrected_slope = (1 - 0.5 / alpha) * d_cur + 0.5 / alpha * d_prime
             if prev_d_prime is not None:

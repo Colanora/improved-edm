@@ -157,3 +157,5 @@ f640ee5	research	proxy	2.607504	27.1622	10.5609	8.9759	7.6808	2187.0	keep	stable
 f640ee5	research	proxy	2.607562	27.1636	10.5616	8.9764	7.6813	2187.0	keep	stable alpha 0.95 with momentum 0.24 and blend start 0.70
 f640ee5	research	proxy	2.607523	27.1637	10.5603	8.9762	7.6813	2187.0	keep	localized cosine late-tail schedule sanity screen
 07a2cdd	research	proxy	2.607550	27.1652	10.5602	8.9762	7.6819	2187.0	keep	localized cosine late-tail schedule sanity screen
+2510eb1	research	proxy	2.607533	27.1630	10.5612	8.9759	7.6813	2187.0	keep	restored 5e43179 base sanity after schedule-law miss
+92008a6	research	proxy	2.607529	27.1644	10.5600	8.9762	7.6817	2187.0	keep	localized forward-value approach sanity screen
