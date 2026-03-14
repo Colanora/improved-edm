@@ -222,3 +222,19 @@ hypothesis=if the paper win is genuinely coming from the UniPC history term, the
 expected_signature=`fid_N35 > 6.7513` with unchanged NFE 5/9/11/13; a large collapse is not required, only a clear weakening versus the winning mechanism
 ablation=this is the family ablation required by `program.md`; if it does not weaken, the mechanism story is not yet specific enough
 kill_condition=any low-NFE drift, any instability in the `{steps_left in 3,4}` window, or no measurable weakening versus `5e43179`
+
+## Candidate Card
+
+family=localized_unipc_preterminal_corrector
+kind=simplification
+external_anchor=UniPC (Zhao et al., 2023)
+borrowed_mechanism=keep the history-aware corrector but test whether only the final standard-regime step before the terminal exact-Heun pair needs it
+synthesis_step=from `5e43179`, shrink `RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT` from `(3, 4)` to `(3,)` while leaving the localized history-aware slope, predictor scale, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=5e43179
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain unchanged because the branch is still inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the history-aware curvature fix may be concentrated on the last standard-regime step before the terminal exact-Heun pair, so a one-step window could preserve most of the `5e43179` gain while making the mechanism easier to explain
+expected_signature=`fid_N35` stays clearly better than the endpoint-Heun-only ablation and remains close enough to `5e43179` to justify the simpler story, with unchanged NFE 5/9/11/13
+ablation=if the one-step window softens materially, keep the two-step `5e43179` window as the minimal defensible mechanism
+kill_condition=any low-NFE drift or any `fid_N35` result that falls back near the endpoint-Heun-only ablation boundary
