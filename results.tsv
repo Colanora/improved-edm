@@ -118,3 +118,25 @@ a1b5a85	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	5
 758eade	research	proxy	2.607525	27.1632	10.5601	8.9766	7.6816	2187.0	keep	
 0c33fe7	research	proxy	2.607537	27.1645	10.5602	8.9768	7.6810	2187.0	keep	
 f80dfb7	research	proxy	2.607511	27.1631	10.5601	8.9763	7.6813	2187.0	keep	
+dccd45a	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	localized DualFast pre-UniPC compensation screen CUDA error: an illegal memory access was encountered Search for `cudaErrorIllegalAddress' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information. CUDA kernel errors might be asynchronously reported at some other API call, so the stacktrace below might be incorrect. For debugging consider passing CUDA_LAUNCH_BLOCKING=1 Compile with `TORCH_USE_CUDA_DSA` to enable device-side assertions.
+dccd45a	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	localized DualFast pre-UniPC compensation screen No backend type associated with device type cpu
+dccd45a	research	proxy	0.000000	0.0000	0.0000	0.0000	0.0000	0.0	crash	localized DualFast pre-UniPC compensation screen Broken pipe
+dccd45a	research	proxy	2.607525	27.1629	10.5609	8.9760	7.6814	2187.0	keep	localized DualFast pre-UniPC compensation screen
+dccd45a	research	proxy	2.607549	27.1648	10.5602	8.9766	7.6816	2186.8	keep	localized DC-Solver buffer compensation screen
+dccd45a	research	proxy	2.607563	27.1650	10.5606	8.9767	7.6814	2186.8	keep	localized x_theta multistep approach screen
+dccd45a	research	proxy	2.607535	27.1637	10.5609	8.9760	7.6813	2186.8	keep	localized ERA basis selection screen
+dccd45a	research	proxy	2.607493	27.1628	10.5601	8.9759	7.6811	2186.8	keep	localized ERA prev_d_prime basis screen
+dccd45a	research	proxy	2.607568	27.1635	10.5619	8.9759	7.6819	2187.0	keep	late-step curvature schedule screen
+dccd45a	research	proxy	2.607539	27.1637	10.5607	8.9760	7.6819	2187.0	keep	late-step curvature 0.96 schedule screen
+dccd45a	research	proxy	2.607525	27.1631	10.5603	8.9761	7.6819	2187.0	keep	late-step curvature 0.94 schedule screen local inception
+dccd45a	research	proxy	2.607538	27.1630	10.5608	8.9766	7.6814	2187.0	keep	later predictor onset 0.35 screen
+dccd45a	research	proxy	2.607536	27.1631	10.5611	8.9757	7.6819	2187.0	keep	earlier predictor onset 0.25 screen
+dccd45a	research	proxy	2.607558	27.1645	10.5605	8.9767	7.6818	2187.0	keep	standard rho 6.7 screen
+dccd45a	research	proxy	2.607547	27.1650	10.5603	8.9763	7.6817	2187.0	keep	standard rho 6.3 screen
+dccd45a	research	proxy	2.607515	27.1636	10.5600	8.9761	7.6815	2187.0	keep	sigma pivot 0.52 schedule screen
+dccd45a	research	proxy	2.607549	27.1641	10.5606	8.9760	7.6821	2187.0	keep	reduced predictor momentum 0.15 screen
+dccd45a	research	proxy	2.607562	27.1651	10.5608	8.9760	7.6818	2187.0	keep	increased predictor momentum 0.21 screen
+dccd45a	research	proxy	2.607532	27.1625	10.5611	8.9760	7.6815	2187.0	keep	increased predictor momentum 0.24 screen
+dccd45a	research	proxy	2.607515	27.1635	10.5598	8.9768	7.6811	2187.0	keep	increased predictor momentum 0.27 screen
+dccd45a	research	proxy	2.607555	27.1636	10.5615	8.9762	7.6813	2187.0	keep	increased predictor momentum 0.25 screen
+dccd45a	research	proxy	2.607519	27.1625	10.5607	8.9762	7.6813	2187.0	keep	late-step curvature 0.92 with reduced predictor momentum 0.16 screen

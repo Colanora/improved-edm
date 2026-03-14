@@ -241,6 +241,38 @@ kill_condition=any low-NFE drift or any `fid_N35` result that falls back near th
 
 ## Candidate Card
 
+family=localized_dualfast_preunipc_compensation
+kind=mechanism
+external_anchor=DualFast: Dual-Speedup Framework for Fast Sampling of Diffusion Models (Yu et al., 2025)
+borrowed_mechanism=replace the current score used by the solver with a localized mix of the current score and one cached higher-noise score from the previous step
+synthesis_step=keep the `5e43179` two-step `{3,4}` history-aware UniPC window and terminal exact-Heun pair unchanged, but add DualFast-style current-score compensation only on the two earlier approach steps `{5,6}`, reusing the existing late predictor-ramp magnitude as the compensation weight instead of introducing a new tuned schedule
+portability=direct
+base_commit=5e43179
+active_nf_range=late full-step regime; NFE 5/9/11/13 should stay unchanged while NFE 35 and the paper path are active
+extra_nfe=0
+hypothesis=the current paper winner may still enter the pre-terminal UniPC window with approximation error inherited from the late approach steps; a localized previous-score compensation on `{5,6}` should reduce that entry error and improve `fid_N35` and paper block 0 without disturbing the low-NFE frontier
+expected_signature=`fid_N35 < 6.7513` with NFE 5/9/11/13 effectively unchanged; if promoted, paper block 0 should improve beyond `1.93345`
+ablation=if this family wins, keep the same `{5,6}` window but remove the higher-noise reuse by zeroing the compensation term, or move the window one step earlier, to verify that the gain is from localized DualFast-style compensation rather than from the mere existence of another late branch
+kill_condition=any `fid_N35` regression versus `5e43179`, any low-NFE drift outside the current stable band, or any sign that the added compensation interferes with the winning `{3,4}` UniPC plus terminal exact-Heun structure
+
+## Candidate Card
+
+family=localized_dcsolver_buffer_compensation
+kind=mechanism
+external_anchor=DC-Solver: Improving Predictor-Corrector Diffusion Sampler via Dynamic Compensation (Zhao et al., 2024)
+borrowed_mechanism=replace the buffered previous score used by a predictor-corrector step with a more trajectory-aligned compensated estimate instead of trusting the raw cached score
+synthesis_step=restore the `5e43179` winner, keep the `{3,4}` localized UniPC window and terminal exact-Heun pair unchanged, and on the two earlier approach steps `{5,6}` replace `prev_d_cur` inside the late predictor extrapolation with a deterministic blend toward `prev_d_prime`, using the existing predictor-extrapolation magnitude as the local compensation weight
+portability=direct
+base_commit=5e43179
+active_nf_range=late full-step regime; NFE 5/9/11/13 should stay unchanged while NFE 35 and the paper path are active
+extra_nfe=0
+hypothesis=the failed DualFast screen suggests the approach error is not in the current slope itself but in the buffered history being slightly misaligned with the corrected trajectory; a localized compensated buffer on `{5,6}` should improve entry into the winning pre-terminal UniPC window and beat `fid_N35=6.7513` without disturbing the frontier
+expected_signature=`fid_N35 < 6.7513` with NFE 5/9/11/13 effectively unchanged; if promoted, paper block 0 should improve beyond `1.93345`
+ablation=if this family wins, keep the same `{5,6}` window but remove the compensated blend back to raw `prev_d_cur`, or move the same compensated-buffer rule into the `{3,4}` window, to test whether the gain is really from localized buffer alignment rather than from another late branch
+kill_condition=any `fid_N35` regression versus `5e43179`, any low-NFE drift outside the current stable band, or any paper block-0 loss that mirrors the failed DualFast translation miss
+
+## Candidate Card
+
 family=localized_unipc_preterminal_corrector
 kind=simplification
 external_anchor=UniPC (Zhao et al., 2023)
@@ -254,3 +286,226 @@ hypothesis=the proxy-only success of `{3}` but paper loss on block 0 suggests th
 expected_signature=`fid_N35` stays below the endpoint-Heun-only ablation and remains near the two-step base closely enough to justify a paper check, with unchanged NFE 5/9/11/13
 ablation=if the `{4}`-only window also misses, keep the two-step `5e43179` window as the minimal paper-qualified story
 kill_condition=any low-NFE drift or any `fid_N35` result that falls back near the endpoint-Heun-only ablation boundary
+
+## Paper Entry
+
+paper_id=dpm_solverpp_2022  
+title=DPM-Solver++: Fast Solver for Guided Sampling of Diffusion Probabilistic Models  
+authors=Cheng Lu; Yuhao Zhou; Fan Bao; Jianfei Chen; Chongxuan Li; Jun Zhu  
+venue_or_source=arXiv 2022 / published conference version 2023  
+year=2022  
+url=https://arxiv.org/abs/2211.01095  
+pdf_path=literature/pdfs/dpm_solverpp_2211.01095.pdf  
+family=data-prediction exponential-integrator solver / multistep x_theta history reuse  
+why_relevant=This is the strongest direct anchor left after the failed late-compensation branch. Its central claim is that high-order diffusion ODE updates become more stable when the history reuse lives in data-prediction space x_theta rather than only in epsilon or drift space, which maps naturally onto this repo's denoised-output interface.  
+core_claim=For guided and unconditional diffusion ODE sampling, rewriting the update in x_theta space and then using a multistep second-order solver yields more stable low-NFE behavior than prior epsilon-based high-order solvers; the multistep variant outperforms the singlestep variant when the NFE budget is small.  
+assumptions=The sampler can evaluate or reconstruct x_theta from the model output; the diffusion ODE is handled in half-log-SNR lambda coordinates; multistep history from previous model outputs is available; optional thresholding is useful in guided settings but not intrinsic to the solver family.  
+complete_sampling_pseudocode=
+- Inputs: current state x_s at time s, next time t < s, data-prediction model x_theta(x, time), previous time/state history for multistep updates, lambda-domain step size h = lambda_t - lambda_s.
+- Convert the diffusion ODE to the x_theta-based exact-solution form x_t = (sigma_t / sigma_s) * x_s + sigma_t * integral exp(lambda) * x_theta(...) d lambda.
+- First-order case: approximate x_theta as constant over the step using x_theta(x_s, s) and compute the closed-form exponential-integrator update.
+- Second-order singlestep case: evaluate one intermediate point, estimate the first lambda-derivative of x_theta, and add the corresponding analytic correction term.
+- Second-order multistep case DPM-Solver++(2M): reuse the previous step's x_theta history instead of an intermediate evaluation; estimate the first derivative from the current and previous x_theta values; apply the closed-form second-order correction to update x_t without extra NFE.
+- Shift the x_theta history buffer and continue to the next reverse step.
+- Return the final sample after the last step.
+- NFE accounting: after startup, one model evaluation per reverse step; multistep reuse carries the higher-order term.
+state_variables_and_history=Current sample x_s; current denoised/data prediction x_theta(x_s, s); previous x_theta history for multistep updates; lambda-domain step size h; optional intermediate point for singlestep variants.  
+nfe_accounting=Zero extra NFE for the multistep variant after the history buffer is initialized, because the second-order correction reuses previous x_theta evaluations instead of adding new model calls.  
+portability=direct  
+repo_transfer_hypothesis=Rather than globally swapping the solver, this repo can try a localized DPM-Solver++-style x_theta multistep switch only on the late non-terminal approach steps right before the winning {3,4} UniPC window, preserving the low-NFE frontier and the current terminal exact-Heun pair.  
+failure_or_reject_boundary=Reject any candidate that requires global solver replacement, thresholding-specific gains, or changes to the low-NFE path; the useful transfer is localized x_theta history reuse, not a full solver transplant.  
+citation_followups=DPM-Solver; DEIS; UniPC; DPM-Solver-v3  
+status=ready
+
+## Paper Entry
+
+paper_id=dpm_solver_v3_2023  
+title=DPM-Solver-v3: Improved Diffusion ODE Solver with Empirical Model Statistics  
+authors=Kaiwen Zheng; Cheng Lu; Jianfei Chen; Jun Zhu  
+venue_or_source=arXiv 2023  
+year=2023  
+url=https://arxiv.org/abs/2310.13268  
+pdf_path=literature/pdfs/dpm_solver_v3_2310.13268.pdf  
+family=empirical-model-statistics predictor-corrector solver  
+why_relevant=This is the most relevant modern follow-up in the DPM-Solver line. It makes clear why the full v3 method is outside this repo's clean contract, while still suggesting what part of the idea might be approximated locally without offline assets.  
+core_claim=DPM-Solver-v3 improves diffusion ODE sampling by introducing empirical model statistics l, s, b that define a better parameterization and predictor-corrector update; the statistics are estimated on the pretrained model offline and then reused during fast sampling.  
+assumptions=The method can estimate empirical model statistics from many samples of the pretrained model; it can precompute integrals involving those statistics; the solver uses a generalized parameterization g_theta and multistep predictor-corrector updates with optional pseudo-order and half-corrector variants.  
+complete_sampling_pseudocode=
+- Offline EMS stage: sample many states from the pretrained model, estimate coefficient functions l_lambda, s_lambda, b_lambda that minimize first-order discretization error, and precompute the needed integrals over the chosen time grid.
+- Sampling stage: rewrite the ODE solution with linear, scaling, and bias coefficients involving the EMS and a transformed model parameterization g_theta.
+- For each reverse step, form a local polynomial approximation of g_theta using current and previous cached evaluations.
+- Run a multistep predictor to propose the next point, then optionally apply a corrector or pseudo-order corrector using the same cached quantities.
+- Reuse the cached model evaluations and EMS integrals at every step until the final sample is produced.
+- NFE accounting: no extra NFE beyond the predictor-corrector path at inference time, but the offline EMS estimation is essential to the method.
+state_variables_and_history=Current sample; generalized parameterization g_theta; cached previous model outputs; empirical model statistics l,s,b over lambda; predictor-corrector history buffers.  
+nfe_accounting=Sampling-time NFE is competitive, but the method depends on an offline EMS estimation pass and precomputed integrals.  
+portability=partial  
+repo_transfer_hypothesis=A deterministic local surrogate for EMS-like buffer alignment might be portable, but the full method is out of scope because it needs offline statistics and precomputed coefficients tied to the pretrained model.  
+failure_or_reject_boundary=Reject any candidate that needs saved EMS tables, offline estimation jobs, or harness changes beyond sample.py; under program.md, those violate the frozen fixed-pretrained contract.  
+citation_followups=DPM-Solver++; UniPC; DEIS; exponential Rosenbrock methods  
+status=ready
+
+## Paper Entry
+
+paper_id=tada_2025  
+title=TADA: Improved Diffusion Sampling with Training-free Augmented DynAmics  
+authors=Tianrong Chen; Huangjie Zheng; David Berthelot; Jiatao Gu; Josh Susskind; Shuangfei Zhai  
+venue_or_source=arXiv 2025  
+year=2025  
+url=https://arxiv.org/abs/2506.21757  
+pdf_path=literature/pdfs/tada_2506.21757.pdf  
+family=training-free augmented dynamics / momentum diffusion  
+why_relevant=This is a recent independently discovered source that usefully defines a reject boundary for this repo. It is attractive at the headline level, but the mechanism depends on augmented state dynamics that are much broader than a clean sampler-only patch here.  
+core_claim=By lifting sampling into a higher-dimensional momentum-style state space and reusing a pretrained diffusion model through a special reweighting, TADA obtains stronger few-step generation with an ODE solver and controllable stochastic-like behavior.  
+assumptions=Sampling runs in an augmented N-variable state space with a custom transition matrix, reweighting vector r_t, and force term F_theta; the solver operates on the augmented dynamics rather than the original scalar-state diffusion trajectory.  
+complete_sampling_pseudocode=
+- Inputs: pretrained x_theta model, augmented state dimension N, time grid, ODE solver Psi for the nonlinear term.
+- Sample an augmented Gaussian prior x_t0 in the N-variable state space.
+- For each reverse step, compute the augmented mean/covariance and the reweighting vector r_t.
+- Feed the reweighted projection of the augmented state into the pretrained x_theta model.
+- Build a momentum-style force term F_theta from the predicted x_0 and the current augmented derivatives.
+- Advance the full augmented state with the controlled transition matrix plus the chosen ODE solver's approximation of the nonlinear term.
+- Return the final data prediction reconstructed from the terminal augmented state.
+- NFE accounting: the solver can still use one model call per step, but the whole state-space and transition structure are fundamentally changed.
+state_variables_and_history=Augmented N-variable state; transition matrix A_t; control vector b_t; reweighting vector r_t; projected network input; optional multistep solver cache.  
+nfe_accounting=Training-free in the narrow sense, but not a simple sampler update: the method changes the latent state dimension and trajectory definition.  
+portability=incompatible  
+repo_transfer_hypothesis=The transferable lesson is only that trajectory-level changes can help in low NFE, but the full augmented-dynamics construction is outside this repo's sample.py-only fixed-state contract.  
+failure_or_reject_boundary=Reject direct use because it changes the state dimensionality and sampling dynamics globally, which would no longer be a clean inference-time sampler modification in the existing EDM interface.  
+citation_followups=AGM; CLD; DPM-Solver++; UniPC  
+status=ready
+
+## Paper Entry
+
+paper_id=aflops_2025  
+title=A-FloPS: Accelerating Diffusion Models via Adaptive Flow Path Sampler  
+authors=Cheng Jin; Zhenyu Xiao; Yuantao Gu  
+venue_or_source=arXiv 2025  
+year=2025  
+url=https://arxiv.org/abs/2509.00036  
+pdf_path=literature/pdfs/aflops_2509.00036.pdf  
+family=flow-path reparameterization with adaptive velocity decomposition  
+why_relevant=This is a second independently discovered 2025 source that sharpens the reject boundary for global trajectory rewrites. It is useful mainly because it shows why those methods are too broad for this repo even when they are training-free.  
+core_claim=Any pretrained diffusion model can be analytically reparameterized into a flow-matching trajectory, and an adaptive decomposition of the resulting velocity field restores the benefits of high-order integration in the few-step regime.  
+assumptions=The sampler can globally remap the diffusion trajectory into a flow-matching parameterization, compute the mapped velocity field from the pretrained score model, and adaptively fit a linear drift-plus-residual decomposition during integration.  
+complete_sampling_pseudocode=
+- Inputs: pretrained score model, diffusion scheduler, target NFE, chosen flow-path ODE integrator.
+- Map each diffusion time step to a flow-matching trajectory parameter t and compute the corresponding velocity from the pretrained score model.
+- For each reverse step, evaluate the mapped velocity at the current point.
+- Estimate an adaptive linear coefficient lambda_t, decompose the velocity into linear drift plus residual, and use the resulting coefficients in a higher-order update formula.
+- Advance the flow-path state with the adaptive update and continue until the final sample is reached.
+- Return the final sample after the global flow-path integration completes.
+- NFE accounting: no extra model evaluations are required, but the entire trajectory parameterization is changed.
+state_variables_and_history=Flow-path state x_t; mapped velocity v_t; adaptive linear coefficient lambda_t; residual velocity history; reparameterized time grid.  
+nfe_accounting=Training-free and no extra model calls, but relies on a global diffusion-to-flow trajectory rewrite and adaptive velocity decomposition.  
+portability=partial  
+repo_transfer_hypothesis=The only portable lesson here is that late-stage dynamics may benefit from better-conditioned local trajectories, but the full flow-path rewrite is too broad for the frozen EDM step contract.  
+failure_or_reject_boundary=Reject direct use because it changes the global trajectory, time parameterization, and solver semantics rather than expressing one localized sampler mechanism inside the existing EDM loop.  
+citation_followups=Flow Matching; DPM-Solver++; UniPC; diffusion-to-flow equivalence work  
+status=ready
+
+## Candidate Card
+
+family=localized_xtheta_multistep_approach
+kind=mechanism
+external_anchor=DPM-Solver++: Fast Solver for Guided Sampling of Diffusion Probabilistic Models (Lu et al., 2022)
+borrowed_mechanism=use multistep history in data-prediction space x_theta instead of relying only on drift-space history
+synthesis_step=keep the 5e43179 winner unchanged on the {3,4} localized UniPC window and terminal exact-Heun pair, but on the two earlier approach steps {5,6} replace the current drift-space predictor extrapolation with a localized AB2-style x_theta extrapolation built from the current and previous denoised predictions, then convert it back to drift only for those steps
+portability=direct
+base_commit=5e43179
+active_nf_range=late full-step regime; NFE 5/9/11/13 should remain unchanged while NFE 35 and the paper path are active
+extra_nfe=0
+hypothesis=data-prediction history may align the approach into the winning pre-terminal UniPC window better than drift-history compensation, so a localized x_theta multistep switch should beat fid_N35=6.7513 without reproducing the paper miss seen from current-slope compensation
+expected_signature=`fid_N35 < 6.7513` with the low-step band effectively unchanged; if promoted, paper block 0 should improve beyond `1.93345`
+ablation=if this family wins, keep the same {5,6} window but revert to raw drift-space predictor extrapolation, or move the same x_theta multistep rule into the {3,4} window, to test whether the gain truly comes from localized x_theta history reuse
+kill_condition=any `fid_N35` regression versus `5e43179`, any low-NFE drift outside the stable band, or any paper block-0 loss that repeats the failed DualFast translation pattern
+
+## Paper Entry
+
+paper_id=era_solver_2023  
+title=ERA-Solver: Error-Robust Adams Solver for Fast Sampling of Diffusion Probabilistic Models  
+authors=Shengming Li; Luping Liu; Runnan Li; Xu Tan  
+venue_or_source=arXiv 2023  
+year=2023  
+url=https://arxiv.org/abs/2301.12935  
+pdf_path=literature/pdfs/era_solver_2301.12935.pdf  
+family=error-robust Adams predictor-corrector / adaptive Lagrange basis selection  
+why_relevant=This is the strongest direct new anchor after the failed late-compensation family. The distinctive transferable idea is not just Adams extrapolation itself, but adaptively choosing lower-error history bases instead of trusting one fixed multistep stencil.  
+core_claim=ERA-Solver improves fast diffusion sampling by using an implicit Adams predictor-corrector with a Lagrange-interpolation predictor whose bases are adaptively selected to reduce the impact of noisy model-estimation errors; this makes the solver more robust than fixed-coefficient fast samplers.  
+assumptions=The sampler has a buffer of previous estimated noises or model outputs; it can rank or select better history bases using an error proxy; predictor-corrector structure is available without extra training.  
+complete_sampling_pseudocode=
+- Inputs: reverse time grid, current state x_t, buffer of previously estimated noises epsilon_hat at earlier steps, DDIM-like transfer update, chosen predictor-corrector order.
+- At each reverse step, maintain a candidate set of previous estimated noises from the buffer.
+- Use a Lagrange interpolation predictor instead of a fixed Adams stencil: build the predictor from selected history bases rather than fixed coefficients tied to fixed offsets.
+- Rank or choose the history bases expected to have lower estimation error and interpolate the current unobserved term from those bases.
+- Use the predicted term inside an implicit-Adams-style corrector / transfer update to produce the next sample state.
+- Push the new estimated noise into the buffer and continue.
+- Return the final sample after the last reverse step.
+- NFE accounting: no extra NFE beyond the predictor-corrector path; robustness comes from adaptive history selection, not extra model calls.
+state_variables_and_history=Current sample; buffer of previous estimated noises/model outputs; selected Lagrange bases for the predictor; predictor-corrector state.  
+nfe_accounting=Zero extra NFE; the method reuses existing history with adaptive basis selection.  
+portability=direct  
+repo_transfer_hypothesis=The portable core is a localized adaptive basis choice between competing one-step histories already available in this repo, rather than a full global Lagrange-buffer rewrite. In sample.py that means selecting the more trustworthy previous slope history only on late approach steps before the winning {3,4} UniPC window.  
+failure_or_reject_boundary=Reject any version that needs a long history buffer, global stencil rewrite, or changes to the low-NFE path; the useful repo transfer is a very local basis-selection rule.  
+citation_followups=PNDM; DPM-Solver++; UniPC; Adams predictor-corrector literature  
+status=ready
+
+## Paper Entry
+
+paper_id=genie_2022  
+title=GENIE: Higher-Order Denoising Diffusion Solvers  
+authors=Tim Dockhorn; Arash Vahdat; Karsten Kreis  
+venue_or_source=arXiv 2022  
+year=2022  
+url=https://arxiv.org/abs/2210.05475  
+pdf_path=literature/pdfs/genie_2210.05475.pdf  
+family=higher-order Taylor solver with distilled higher-order score head  
+why_relevant=This paper is useful mainly as a reject boundary. It is a clean example of a solver idea that is training-free only in the sampling update but still needs an extra trained head to be practical.  
+core_claim=GENIE accelerates diffusion ODE sampling by applying a second-order truncated Taylor method to the DDIM ODE and learning a small additional network head that predicts the required higher-order Jacobian-vector-product terms efficiently during synthesis.  
+assumptions=The method can obtain higher-order score terms by automatic differentiation and then distill them into an auxiliary head attached to the score network; practical synthesis depends on that extra learned module.  
+complete_sampling_pseudocode=
+- Train the base first-order score model as usual.
+- Compute the higher-order derivative terms of the DDIM ODE using automatic differentiation / Jacobian-vector products.
+- Distill those higher-order terms into a small auxiliary prediction head attached to the score network.
+- During sampling, evaluate both the base score model and the auxiliary head at each step.
+- Apply the second-order truncated Taylor update using the predicted higher-order derivative term.
+- Repeat until the final sample is reached.
+state_variables_and_history=Current sample; base score model output; distilled higher-order derivative head output; DDIM ODE step size.  
+nfe_accounting=Sampling uses few solver steps, but the approach requires training an additional head and therefore is not a pure sample.py-only modification.  
+portability=incompatible  
+repo_transfer_hypothesis=The only transferable lesson is that higher-order local curvature matters near the end of the trajectory, but the actual GENIE mechanism is outside this repo because it needs an extra trained module.  
+failure_or_reject_boundary=Reject direct use because program.md forbids added trainable parameters and extra model heads.  
+citation_followups=DDIM; PNDM; higher-order Itô-Taylor solvers  
+status=ready
+
+## Candidate Card
+
+family=localized_era_basis_selection
+kind=mechanism
+external_anchor=ERA-Solver: Error-Robust Adams Solver for Fast Sampling of Diffusion Probabilistic Models (Li et al., 2023)
+borrowed_mechanism=adaptively choose the lower-error history basis for the predictor instead of trusting one fixed Adams-style previous state
+synthesis_step=keep the 5e43179 winner unchanged on the {3,4} localized UniPC window and terminal exact-Heun pair, and only on the two earlier approach steps {5,6} choose the predictor history between prev_d_cur and prev_d_prime by whichever is closer to the current drift, then use that selected basis in the existing late extrapolation rule
+portability=direct
+base_commit=5e43179
+active_nf_range=late full-step regime; NFE 5/9/11/13 should remain unchanged while NFE 35 and the paper path are active
+extra_nfe=0
+hypothesis=the failed compensation variants suggest the issue is not adding another correction term but trusting the wrong late history basis; localized ERA-style basis selection should improve fid_N35 beyond 6.7513 without perturbing the frontier
+expected_signature=`fid_N35 < 6.7513` with the low-step band effectively unchanged; if promoted, paper block 0 should improve beyond `1.93345`
+ablation=if this family wins, keep the same {5,6} window but force the predictor to always use prev_d_cur or always use prev_d_prime, to verify that the gain comes from basis selection rather than one history being globally better
+kill_condition=any `fid_N35` regression versus `5e43179`, any low-NFE drift outside the stable band, or any proxy signature that looks indistinguishable from the failed compensation family
+
+## Candidate Card
+
+family=localized_era_basis_selection
+kind=tuning
+external_anchor=ERA-Solver: Error-Robust Adams Solver for Fast Sampling of Diffusion Probabilistic Models (Li et al., 2023)
+borrowed_mechanism=probe whether one specific lower-error history basis is better than adaptive or fixed-raw history on the late predictor
+synthesis_step=from the failed adaptive-basis screen, keep the same {5,6} localized ERA window but force the predictor to always use prev_d_prime there, while leaving the {3,4} UniPC window and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=5e43179
+active_nf_range=late full-step regime; NFE 5/9/11/13 should remain unchanged while NFE 35 and the paper path are active
+extra_nfe=0
+hypothesis=the adaptive selector may simply be too noisy with only one-step history, while the corrected-history basis prev_d_prime could still be the consistently better late Adams basis and improve fid_N35 beyond 6.7513
+expected_signature=`fid_N35 < 6.7513` with the low-step band effectively unchanged; if it loses again, the ERA family should be closed after two misses
+ablation=this is the complementary one-sided ablation to the failed adaptive selector; the other endpoint is already represented by the base sampler's default prev_d_cur history
+kill_condition=any `fid_N35` regression versus `5e43179`, any low-NFE drift outside the stable band, or a result that lands in the same miss band as the adaptive ERA screen

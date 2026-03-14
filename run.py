@@ -124,7 +124,7 @@ def initialize_distributed(device: torch.device) -> torch.device:
     if not torch.distributed.is_initialized():
         backend = os.environ.get("EDM_DIST_BACKEND", "")
         if not backend:
-            backend = "gloo"
+            backend = "gloo" if os.name == "nt" else "nccl"
         torch.distributed.init_process_group(backend=backend, init_method="env://")
     if device.type == "cuda":
         return torch.device("cuda", local_rank)
@@ -191,7 +191,13 @@ def shard_seed_batches(
 
 def all_reduce_tensor(value: torch.Tensor) -> torch.Tensor:
     if distributed_world_size() > 1:
-        torch.distributed.all_reduce(value)
+        reduce_value = value
+        if value.device.type == "cpu" and torch.distributed.get_backend() == "nccl":
+            local_rank = int(os.environ.get("LOCAL_RANK", "0"))
+            reduce_value = value.to(torch.device("cuda", local_rank))
+        torch.distributed.all_reduce(reduce_value)
+        if reduce_value is not value:
+            return reduce_value.cpu()
     return value
 
 
@@ -201,9 +207,9 @@ def max_peak_vram_mb(device: torch.device) -> float:
     peak_vram_mb = float(torch.cuda.max_memory_allocated(device)) / (1024 * 1024)
     if distributed_world_size() <= 1:
         return peak_vram_mb
-    peak_tensor = torch.tensor([peak_vram_mb], dtype=torch.float64)
+    peak_tensor = torch.tensor([peak_vram_mb], dtype=torch.float64, device=device)
     torch.distributed.all_reduce(peak_tensor, op=torch.distributed.ReduceOp.MAX)
-    return float(peak_tensor.item())
+    return float(peak_tensor.cpu().item())
 
 
 def evaluate_sampler(
