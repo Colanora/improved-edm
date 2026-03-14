@@ -18,7 +18,6 @@ RESEARCH_STANDARD_MAX_PREDICTOR_MOMENTUM = 0.18
 RESEARCH_STANDARD_CORRECTOR_MEMORY_SCALE = 0.5
 RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
-RESEARCH_STANDARD_REFRESH_GAMMA = 0.02
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -104,17 +103,6 @@ def research_step_terminal_exact_heun(num_steps: int, device: torch.device) -> t
     return step_terminal_exact_heun
 
 
-def research_step_churn(num_steps: int, device: torch.device) -> torch.Tensor:
-    step_churn = torch.zeros(num_steps, dtype=torch.float64, device=device)
-    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
-        return step_churn
-    terminal_end = num_steps - 1
-    terminal_start = max(0, terminal_end - RESEARCH_STANDARD_TERMINAL_HEUN_STAGES)
-    refresh_index = max(0, terminal_start - 1)
-    step_churn[refresh_index] = RESEARCH_STANDARD_REFRESH_GAMMA
-    return step_churn
-
-
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
@@ -159,7 +147,6 @@ def research_sampler(
     step_predictor_mix = research_step_predictor_mix(num_steps, latents.device)
     step_corrector_memory = research_step_corrector_memory(num_steps, latents.device)
     step_terminal_exact_heun = research_step_terminal_exact_heun(num_steps, latents.device)
-    step_churn = research_step_churn(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
     prev_d_cur = None
     prev_d_prime = None
@@ -168,9 +155,7 @@ def research_sampler(
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
         x_cur = x_next
 
-        gamma = float(step_churn[i])
-        if S_min <= t_cur <= S_max:
-            gamma = max(gamma, min(S_churn / num_steps, 2**0.5 - 1))
+        gamma = min(S_churn / num_steps, 2**0.5 - 1) if S_min <= t_cur <= S_max else 0
         t_hat = net.round_sigma(t_cur + gamma * t_cur)
         noise_scale = (t_hat.square() - t_cur.square()).clamp_min(0).sqrt()
         x_hat = x_cur + noise_scale * S_noise * randn_like(x_cur)
