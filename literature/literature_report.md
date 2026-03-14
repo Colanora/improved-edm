@@ -1064,3 +1064,177 @@ hypothesis=if the `3d0ecd6` gain comes mostly from introducing midpoint diffusio
 expected_signature=the proxy frontier should remain inside the usual stable band; if promoted, paper block 0 will likely land above `1.92757` if the mixed tail is minimal, but a surprise improvement would argue that the second late step also prefers midpoint integration over history correction
 ablation=this is the complementary same-family consolidation probe after the `{steps_left=3}` placement miss; together the two ablations test whether placement or two-step widening can explain the paper win
 kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper block-0 result that clearly trails the `3d0ecd6` base
+
+## Paper Entry
+
+paper_id=rex_2026
+title=Rex: A Family of Reversible Exponential (Stochastic) Runge-Kutta Solvers
+authors=Zander W. Blasingame; Chen Liu
+venue_or_source=arXiv
+year=2026
+url=https://arxiv.org/abs/2502.08834
+pdf_path=literature/pdfs/rex_2502.08834.pdf
+family=reversible exponential Runge-Kutta solvers with Lawson-transformed diffusion dynamics
+why_relevant=This is a recent independently discovered solver paper that at first looks like a route to a fresh diffusion-ODE update family, but it is most useful here for separating genuinely new reversible machinery from Princeps steps that reduce to already-known DPM/DDIM-style solvers.
+core_claim=By applying a Lawson transform to the semilinear diffusion ODE/SDE, building an explicit RK-based transformed solver `Princeps`, and then coupling it with a McCallum-Foster-style reversible shadow-state update, one can obtain algebraically reversible diffusion solvers with the same convergence order as the underlying RK method.
+assumptions=Known diffusion schedule functions `alpha_t`, `sigma_t`, or equivalent transformed coordinates; explicit RK or SRK coefficients; ability to maintain an auxiliary shadow state and, for the SDE case, replay the same Brownian path.
+complete_sampling_pseudocode=
+- Inputs: current diffusion state `x_n`, auxiliary shadow state `xhat_n`, transformed time coordinate `varsigma`, integrating-factor weight `kappa_n`, coupling parameter `zeta`, and an explicit RK/SRK base scheme `Phi`.
+- Construct `Princeps`:
+- Rewrite the diffusion ODE/SDE into a transformed state `Y` via integrating factor and time change so `dY/dvarsigma = f_theta(varsigma, Xi(varsigma) Y)` (plus Brownian noise in the SDE case).
+- Apply the chosen explicit RK/SRK scheme `Phi` in the transformed coordinates to obtain an increment `Psi_h`.
+- Map the update back to the original state variable with the schedule-dependent weights.
+- Construct `Rex` forward step:
+- `x_{n+1} = (kappa_{n+1}/kappa_n) * (zeta * x_n + (1-zeta) * xhat_n) + kappa_{n+1} * Psi_h(varsigma_n, xhat_n)`.
+- `xhat_{n+1} = (kappa_{n+1}/kappa_n) * xhat_n - kappa_{n+1} * Psi_{-h}(varsigma_{n+1}, x_{n+1})`.
+- Backward step mirrors the forward equations with the same `Psi_h/Psi_{-h}` pair, recovering the previous state exactly in algebraic form.
+- For ODE sampling only, the portable core is just `Princeps`; the reversibility benefit comes only when the auxiliary shadow-state coupling is also kept.
+state_variables_and_history=Current sample `x_n`; auxiliary shadow state `xhat_n`; transformed time variable; integrating-factor weights `kappa_n`; optional Brownian increments or PRNG seed for SDE reversibility; RK stage states for `Princeps`.
+nfe_accounting=Princeps inherits the NFE of the chosen RK order, but Rex adds paired forward/backward Princeps evaluations and auxiliary-state bookkeeping to realize reversibility.
+portability=partial
+repo_transfer_hypothesis=The only direct-looking piece is `Princeps`, but the paper itself shows that Princeps subsumes DDIM, DPM-Solver-1/2/12, DPM-Solver++(2S), SEEDS-1, and gDDIM. The new value of Rex is reversibility, not a clearly better forward-only sampler update for this repo.
+failure_or_reject_boundary=Reject Rex proper as a serious next family because its novelty depends on the reversible shadow-state machinery and backward Princeps step, which target inversion/editing rather than forward FID. Treat Princeps as a unifying lens that collapses back into already-tested DPM-style moves rather than a fresh family.
+citation_followups=DPM-Solver; DPM-Solver++; DDIM; SEEDS; gDDIM; McCallum-Foster reversible methods
+status=ready
+
+## Paper Entry
+
+paper_id=fscheduler_2026
+title=F-scheduler: illuminating the free-lunch design space for fast sampling of diffusion models
+authors=Zilai Li; Lujia Bai
+venue_or_source=arXiv
+year=2026
+url=https://arxiv.org/abs/2510.02390
+pdf_path=literature/pdfs/hyperparams_2510.02390.pdf
+family=architecture-aware timestep schedule with decoder-noise tolerance and delayed Free-U activation
+why_relevant=This recent independently discovered schedule paper initially looks relevant to the repo's schedule-law lane, but its actual mechanism is tightly coupled to latent diffusion decoders and Free-U U-Net modification, making it a useful reject boundary for schedule research here.
+core_claim=A customized few-step schedule that stops short of full denoising, optionally inserts an analytical first step, and activates Free-U only at a chosen late stage can outperform stronger baselines in latent diffusion because the beta-VAE decoder can absorb residual noise.
+assumptions=Latent diffusion model with a beta-VAE decoder; Free-U or similar skip-connection decorator available inside the U-Net; text-to-image guidance tuning; high-resolution latent pipeline.
+complete_sampling_pseudocode=
+- Inputs: base ODE solver `F_theta`, total inference step count `N`, Karras-like reference schedule parameters `p1`, `p2`, `stop`, augmentation activation step `t_aug`, optional analytical first-step solver, latent decoder with residual-noise tolerance.
+- Compute `sigma_stop` from a Karras-style schedule law using exponent `p2`.
+- Build a truncated inference time grid from `t_max` down to `t(sigma_stop)` using exponent `p1` instead of denoising all the way to zero noise.
+- Optionally insert an analytical first step between the first two schedule points.
+- Run the base ODE solver on the custom schedule.
+- Activate Free-U only once the iteration reaches `t_aug`, leaving earlier steps unmodified.
+- Decode the residual-noise latent with the beta-VAE decoder, relying on decoder robustness to absorb the remaining small noise.
+state_variables_and_history=Current latent state; custom schedule parameters `p1`, `p2`, `stop`; augmentation activation step `t_aug`; optional analytical first-step state; decoder noise floor.
+nfe_accounting=The method changes the effective endpoint and time grid and can add an analytical first step, but its main assumptions live outside the sampler update itself.
+portability=incompatible
+repo_transfer_hypothesis=The only transferable lesson is negative: schedule-law ideas that rely on decoder tolerance, latent-space truncation, or U-Net architecture decorators are not faithful candidates in this fixed-pretrained EDM repo.
+failure_or_reject_boundary=Reject direct transfer because this repo has no beta-VAE decoder, no Free-U hook, and already saw a decisive schedule-law paper miss when the mechanism was expressed purely as a schedule warp.
+citation_followups=EDM design space; DPM-Solver; Free-U; latent diffusion few-step schedulers
+status=ready
+
+## Paper Entry
+
+paper_id=fsampler_2025
+title=FSampler: Training-Free Acceleration of Diffusion Sampling via Epsilon Extrapolation
+authors=Michael A. Vladimir
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2511.09180
+pdf_path=literature/pdfs/fsampler_2511.09180.pdf
+family=epsilon-history extrapolation with explicit model-call skipping
+why_relevant=This recent independently discovered paper is useful because it cleanly separates a tempting "training-free acceleration" idea from the repo's fixed-NFE research objective and still offers a lightweight error-signal idea that can be repurposed without skipping calls.
+core_claim=One can reduce wall-clock time and NFE by extrapolating the next epsilon from recent real model outputs, validating the prediction with norm/error checks, and substituting the predicted epsilon on selected skip steps while keeping each sampler's update rule unchanged.
+assumptions=Sampler framework allows designated skip steps; NFE reduction is allowed; epsilon or denoised predictions are accessible; anchor steps and skip cadence may be changed independently of the underlying solver.
+complete_sampling_pseudocode=
+- Inputs: sampler state `x_n`, sigma schedule, recent real epsilons, predictor order `h2/h3/h4`, skip policy, optional learning-ratio and gradient-estimation stabilizers.
+- On real steps:
+- Call the model, compute the true epsilon, append it to epsilon history, and update any EMA-based stabilizer.
+- On skip-designated steps:
+- Extrapolate `epsilon_hat` from the recent real epsilon history using second-, third-, or fourth-order finite differences.
+- Validate `epsilon_hat` for finite values and reasonable norm; cancel the skip if the prediction looks unstable.
+- Optionally rescale `epsilon_hat` with a learning-ratio stabilizer and optionally add a local curvature correction.
+- Substitute `denoised = x_n + epsilon_hat` and then apply the base sampler's update rule exactly as usual.
+- Periodically force anchor steps and protect head/tail windows to prevent long drift.
+state_variables_and_history=Current state; sigma schedule; recent real epsilon history; skip cadence or adaptive gate; learning-ratio EMA; optional previous derivative for curvature correction.
+nfe_accounting=The central mechanism reduces NFE by skipping model calls, so the method is not a same-budget sampler update.
+portability=incompatible
+repo_transfer_hypothesis=The portable residue is only the predictor-disagreement idea: use embedded disagreement or extrapolation error as a dormant confidence signal on full-budget steps, not as a skip mechanism.
+failure_or_reject_boundary=Reject direct use because the paper's value comes from changing NFE accounting through skipped model calls, which violates the repo's fixed benchmark protocol.
+citation_followups=DPM-Solver; DEIS; UniPC; RES multistep samplers; cache-based acceleration papers
+status=ready
+
+## Paper Entry
+
+paper_id=tap_2026
+title=TAP: A Token-Adaptive Predictor Framework for Training-Free Diffusion Acceleration
+authors=Haowei Zhu; Tingxuan Huang; Xing Wang; Tianyu Zhao; Jiexi Wang; Weifeng Chen; Xurui Peng; Fangmin Chen; Junhai Yong; Bin Wang
+venue_or_source=arXiv
+year=2026
+url=https://arxiv.org/abs/2603.03792
+pdf_path=literature/pdfs/tap_2603.03792.pdf
+family=token-adaptive predictor selection for diffusion transformers
+why_relevant=This recent independently discovered acceleration paper is important because it offers a modern predictor-selection viewpoint, but only through model-internal token routing that is incompatible with this repo. It therefore sharpens the boundary between valid sampler research and transformer compute scheduling.
+core_claim=A single first-layer probe can estimate per-token predictor error well enough to let a diffusion transformer choose a different cached/predicted feature update for each token and step, improving the quality-efficiency frontier over global predictor policies.
+assumptions=Diffusion transformer architecture with tokenized hidden states; access to first-layer modulated inputs and residual caches; ability to replace downstream token computations selectively; prediction windows over hidden-feature trajectories.
+complete_sampling_pseudocode=
+- Inputs: current transformer hidden state `x_t`, cached first-layer modulated inputs and residuals from earlier full steps, predictor family `P` with different Taylor orders and horizons, probe distance metric.
+- Every `N`th step perform a full model evaluation, cache the first-layer modulated input and residual features.
+- On accelerated steps, predict each token's future hidden feature under every candidate predictor in `P`.
+- Use a first-layer probe to compute a per-token proxy loss for each candidate predictor.
+- Select the lowest-proxy-loss predictor independently for each token.
+- Use the selected tokenwise predicted residuals to replace the full model computation for that step.
+- Repeat over the denoising trajectory.
+state_variables_and_history=Tokenwise hidden features; cached first-layer modulated inputs; residual caches; predictor family over Taylor order and horizon; tokenwise proxy losses.
+nfe_accounting=The method reduces wall-clock cost by replacing or skipping large fractions of model-internal computation rather than by preserving an unchanged sampler at fixed model cost.
+portability=incompatible
+repo_transfer_hypothesis=The direct transfer is negative: adaptive predictor selection can be powerful, but only when one has token-level access to model internals. The portable lesson is merely that disagreement-based selection can be used as a proxy signal, not that token-adaptive acceleration itself can be ported here.
+failure_or_reject_boundary=Reject direct use because this repo exposes only sampler-level state in `sample.py`, not token-level transformer features or model-internal routing hooks.
+citation_followups=TaylorSeer; TeaCache; SpeCa; ToCa; FoCa; FreqCa
+status=ready
+
+## Paper Entry
+
+paper_id=pdns_2025
+title=Proximal Diffusion Neural Sampler
+authors=Wei Guo; Jaemoo Choi; Yuchen Zhu; Molei Tao; Yongxin Chen
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2510.03824
+pdf_path=literature/pdfs/pdns_2510.03824.pdf
+family=proximal point diffusion neural sampler trained over path measures
+why_relevant=This recent independently discovered paper is not a direct inference-time sampler for a fixed pretrained model, but it provides a clear proximal-regularization viewpoint that can inspire a training-free trust-region-style correction family in `sample.py`.
+core_claim=Instead of solving a single global stochastic optimal-control problem for a neural diffusion sampler, one can run proximal iterations in path-space, repeatedly solving local KL-regularized subproblems and training a new controlled diffusion process against proximal weighted denoising cross-entropy targets to improve mode coverage and stability.
+assumptions=Neural sampler is trainable; one can optimize model parameters over repeated proximal iterations; stochastic optimal-control or denoising-cross-entropy training infrastructure is available; reference and target path measures are known.
+complete_sampling_pseudocode=
+- Inputs: reference path measure `P_ref`, current neural sampler path measure `P_{theta_{k-1}}`, target reward `r(X_T)`, proximal step size `eta_k`.
+- For proximal iteration `k`, define the local subproblem:
+- minimize `-E_P[r(X_T)] + KL(P || P_ref) + (1/eta_k) * KL(P || P_{theta_{k-1}})`.
+- Sample trajectories from the previous neural sampler and compute proximal path weights relative to `P_ref` and the terminal reward.
+- Train a new neural control or score network with a proximal weighted denoising cross-entropy or equivalent bridge-matching loss.
+- Set the new sampler as `P_{theta_k}` and repeat.
+- At the end of training, use the learned controlled diffusion to sample from the target distribution.
+state_variables_and_history=Current neural sampler parameters; previous proximal iterate; proximal step size schedule; trajectory weights; terminal rewards; reference path measure.
+nfe_accounting=Inference-time NFE can resemble that of a controlled diffusion sampler, but the method fundamentally depends on repeated training and proximal optimization over path measures.
+portability=incompatible
+repo_transfer_hypothesis=The direct method is out of scope, but the paper does suggest a portable synthesis idea: when a higher-order step looks too aggressive, regularize it toward a simpler local companion using an error- or disagreement-based trust weight rather than replacing the whole trajectory or retraining a sampler.
+failure_or_reject_boundary=Reject faithful transfer because PDNS is a training procedure for learning a new neural sampler, not an inference-time update that can be implemented in `sample.py` on a fixed pretrained EDM backbone.
+citation_followups=Path Integral Sampler; weighted denoising cross-entropy samplers; diffusion Schrodinger bridge methods
+status=ready
+
+## Session Takeaway
+
+- `Rex` closes off another tempting transformed-RK branch: its genuinely new part is reversibility with a shadow state, while the forward-only portable core mostly collapses back into DDIM/DPM/SEEDS-style exponential-integrator solvers.
+- `F-scheduler` is a clean reject boundary for schedule work that depends on decoder tolerance, latent truncation, or Free-U U-Net decoration rather than on a pure sampler-side mechanism.
+- `FSampler` and `TAP` are both strong evidence that many recent diffusion speedups come from changing NFE accounting or model-internal adaptive compute, not from a same-budget sampler update; the only portable residue is disagreement-based confidence signaling.
+- `PDNS` is incompatible as a direct method, but its proximal viewpoint suggests a new in-bounds synthesis: keep a higher-order step only when its embedded local error is small, and otherwise shrink it toward a simpler companion without changing NFE.
+- The next clean synthesized target is therefore an embedded trust-region family on top of the current `3d0ecd6` base: use the free Euler-vs-midpoint disagreement inside the existing DPM entry step as a local trust signal, and proximal-shrink the midpoint update toward its first-order companion when the embedded error is large.
+
+## Candidate Card
+
+family=embedded_proximal_midpoint_trust_region
+kind=mechanism
+external_anchor=Proximal Diffusion Neural Sampler (Guo et al., 2025); Rex: A Family of Reversible Exponential (Stochastic) Runge-Kutta Solvers (Blasingame & Liu, 2026)
+borrowed_mechanism=combine a proximal conservative-update idea with an embedded Euler-versus-midpoint pair that provides a free local error signal inside the same two-call DPM-style step
+synthesis_step=keep the exact `3d0ecd6` paper base everywhere, but on the pre-terminal `{steps_left=4}` midpoint branch compute both the first-order Euler companion and the second-order midpoint update, then use their normalized disagreement to shrink the midpoint proposal back toward the Euler companion when the embedded local error is large, without changing NFE or the downstream `{steps_left=3}` UniPC correction
+portability=direct
+base_commit=1705480
+active_nf_range=paper-targeted full-step regime only; the branch remains dormant when `num_steps < 12`
+extra_nfe=0
+hypothesis=the `3d0ecd6` win may contain a real midpoint-direction benefit but still overshoot on a subset of trajectories; an embedded trust-region shrink could preserve the good direction while damping the rare over-aggressive step, potentially improving paper block 0 without reopening the wide misses from placement or whole-window rewrites
+expected_signature=the low-NFE proxy band should stay inside the usual dormant range; if promoted, paper block 0 should beat `1.92757` or at least sit materially closer to the base than the `{3}`-placement and `{3,4}`-widening ablation losses
+ablation=if this wins, rerun with the trust shrink disabled to recover exact `3d0ecd6`, and with a fixed constant shrink weight, to verify that adaptive embedded-error control rather than simple under-relaxation is the active ingredient
+kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper block-0 result that clearly loses to `3d0ecd6`
