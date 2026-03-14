@@ -21,6 +21,7 @@ RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
 RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT = (3, 4)
 RESEARCH_STANDARD_LOCAL_DPM_SOLVER_STEPS_LEFT = (4,)
+RESEARCH_STANDARD_LOCAL_SCORE_NORMALIZATION_STEPS_LEFT = (5, 6)
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -141,6 +142,18 @@ def research_step_local_dpm_solver_midpoint(num_steps: int, device: torch.device
     return step_local_dpm_solver_midpoint
 
 
+def research_step_local_score_normalization(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_local_score_normalization = torch.zeros(num_steps, dtype=torch.bool, device=device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return step_local_score_normalization
+    terminal_end = num_steps - 1
+    for steps_left in RESEARCH_STANDARD_LOCAL_SCORE_NORMALIZATION_STEPS_LEFT:
+        step_index = terminal_end - steps_left
+        if 0 <= step_index < terminal_end:
+            step_local_score_normalization[step_index] = True
+    return step_local_score_normalization
+
+
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
@@ -168,6 +181,22 @@ def research_local_unipc_corrector_slope(
         + ((step_ratio + 3.0) / 6.0) * d_cur
         - (step_ratio.square() / denom) * d_prev
     )
+
+
+def research_local_score_normalize(
+    d_cur: torch.Tensor,
+    ref_d: torch.Tensor,
+    max_adjust: float,
+) -> torch.Tensor:
+    if max_adjust <= 0.0:
+        return d_cur
+    cur_scale = d_cur.flatten(1).abs().mean(dim=1)
+    ref_scale = ref_d.flatten(1).abs().mean(dim=1)
+    scale_ratio = ref_scale / cur_scale.clamp_min(1e-12)
+    upper = torch.full_like(scale_ratio, 1.0 + max_adjust)
+    lower = upper.reciprocal()
+    scale_ratio = torch.maximum(torch.minimum(scale_ratio, upper), lower)
+    return d_cur * scale_ratio.view(-1, *([1] * (d_cur.ndim - 1)))
 
 
 def research_sampler(
@@ -202,6 +231,7 @@ def research_sampler(
     step_terminal_exact_heun = research_step_terminal_exact_heun(num_steps, latents.device)
     step_local_unipc_corrector = research_step_local_unipc_corrector(num_steps, latents.device)
     step_local_dpm_solver_midpoint = research_step_local_dpm_solver_midpoint(num_steps, latents.device)
+    step_local_score_normalization = research_step_local_score_normalization(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
     prev_d_cur = None
     prev_d_prime = None
@@ -219,6 +249,8 @@ def research_sampler(
         denoised = net(x_hat, t_hat, class_labels).to(torch.float64)
         d_cur = (x_hat - denoised) / t_hat
         h = t_next - t_hat
+        if bool(step_local_score_normalization[i]) and prev_d_prime is not None:
+            d_cur = research_local_score_normalize(d_cur, prev_d_prime, float(step_predictor_mix[i]))
         x_euler = x_hat + h * d_cur
 
         if i == num_steps - 1:

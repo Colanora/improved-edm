@@ -1254,3 +1254,136 @@ hypothesis=if the first trust-region probe lost only because it damped the good 
 expected_signature=the low-NFE proxy band should remain in the usual dormant range; if promoted, the paper row should stay near the incumbent on blocks 0 and 1 while improving block 2 enough to recover the mean gap
 ablation=this is the one allowed scalar follow-up after the initial full-row near-tie; if it also loses, stop tuning the trust cap and rotate away from the family
 kill_condition=any low-NFE drift outside the stable band, any proxy instability, or any paper row that remains clearly worse than the `3d0ecd6` base
+
+## Session Addendum
+
+Session date: 2026-03-14
+Working paper base after the trust-region reject: `3d0ecd6`
+Reason for new pass: the embedded midpoint trust-region family produced two full-row paper losses, so `program.md` requires a fresh literature rotation before the next family change.
+
+## Paper Entry
+
+paper_id=score_normalization_2023
+title=Score Normalization for a Faster Diffusion Exponential Integrator Sampler
+authors=Guoxuan Xia; Duolikun Danier; Ayan Das; Stathi Fotiadis; Farhang Nabiei; Ushnish Sengupta; Alberto Bernacchia
+venue_or_source=NeurIPS 2023 Diffusion Workshop / arXiv
+year=2023
+url=https://arxiv.org/abs/2311.00157
+pdf_path=literature/pdfs/score_normalization_2311.00157.pdf
+family=score reparameterization / empirical norm normalization for exponential-integrator sampling
+why_relevant=This older but newly added source is the cleanest direct anchor for a late-stage scale-calibration family. Its central claim is that low-NFE error is not only directional: the score magnitude itself can become poorly conditioned near the end of sampling, and reparameterizing that magnitude improves fast integration.
+core_claim=DEIS improves low-NFE generation by integrating a reparameterized score, but its default `sigma_t` scaling still leaves a sharp late-time change in score magnitude; replacing that with an empirical average-absolute-score normalization computed per timestep improves low-NFE FID consistently.
+assumptions=The sampler is based on DEIS or another semi-linear exponential integrator; one can precompute per-timestep average absolute score magnitudes from offline high-NFE runs; the model is a noise-prediction diffusion model or can be converted into an equivalent score form.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion score/noise model `s_theta` or `epsilon_theta`; reverse time grid `{t_i}`; DEIS polynomial order `r`; offline table of average absolute score magnitudes `bar_s(t)`.
+- Precompute DEIS coefficients `Psi(t_i, t_j)` and `C_ij` for the chosen schedule and polynomial order, as in vanilla DEIS.
+- Build the score reparameterization function `K_t = 1 / bar_s(t)` instead of the default `K_t = sigma_t`.
+- During sampling, for each reverse step from `t_i` to `t_{i-1}`:
+- Evaluate or reuse the recent score estimates at the required time points.
+- Form the normalized integrand samples `-K_{t_{i+j}} s_theta(x_{t_{i+j}}, t_{i+j})`.
+- Apply the DEIS time-based Adams-Bashforth update:
+- `x_{t_{i-1}} = Psi(t_{i-1}, t_i) x_{t_i} + sum_j C_ij * (-K_{t_{i+j}} s_theta(x_{t_{i+j}}, t_{i+j}))`.
+- Continue until the final step and return `x_0`.
+- Offline, estimate `bar_s(t)` by running a high-NFE sampler, measuring the average absolute score magnitude at each timestep, and linearly interpolating the resulting table for continuous `t`.
+state_variables_and_history=Current sample; current and recent score estimates required by DEIS; DEIS coefficient tables; offline per-timestep score-magnitude table `bar_s(t)`.
+nfe_accounting=No extra NFE at inference time relative to the underlying DEIS order, but the method depends on an offline high-NFE statistics pass to estimate `bar_s(t)`.
+portability=partial
+repo_transfer_hypothesis=The useful portable residue is not the offline DEIS table itself but the idea that late-stage solver error can come from score-magnitude miscalibration. In this repo, a direct translation is to replace the offline table with an online late-history norm reference and localize the effect to the paper-only approach steps before the winning `{4}` midpoint plus `{3}` UniPC tail.
+failure_or_reject_boundary=Reject any direct port that requires an offline norm table, a global DEIS solver swap, or low-NFE-path changes. The only in-bounds transfer is a localized online norm calibration inside the existing sampler.
+citation_followups=DEIS; gDDIM; Common Diffusion Noise Schedules and Sample Steps Are Flawed
+status=ready
+
+## Paper Entry
+
+paper_id=dyweight_2026
+title=DyWeight: Dynamic Gradient Weighting for Few-Step Diffusion Sampling
+authors=Tong Zhao; Mingkun Lei; Liangyu Yuan; Yanming Yang; Chenxi Song; Yang Wang; Beier Zhu; Chi Zhang
+venue_or_source=arXiv
+year=2026
+url=https://arxiv.org/abs/2603.11607
+pdf_path=literature/pdfs/dyweight_2603.11607.pdf
+family=learned dynamic gradient weighting with implicit time calibration
+why_relevant=This newly added 2026 paper is valuable mainly as a reject boundary and calibration read. It cleanly separates two ingredients that matter in few-step diffusion solvers: history weighting and time/step-size calibration. That framing is useful even though the paper's direct method is outside this repo's contract.
+core_claim=Classical handcrafted multistep coefficients are suboptimal in the few-step diffusion regime; learning time-varying unconstrained history weights together with explicit time shifting and time scaling yields a better solver trajectory and state-of-the-art few-step quality.
+assumptions=A high-fidelity teacher trajectory is available; per-step solver weights and time-scaling factors can be learned offline by distillation; the model can be queried repeatedly during teacher and student optimization.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model `D_theta`; teacher solver `S`; teacher schedule `T_teacher`; student schedule `T_student`; multistep order `K`; learnable student parameters `Phi = {W, s}`.
+- Training stage:
+- Sample initial noise `x_T`.
+- Generate a high-step teacher sample `x_0^teacher = S(D_theta, x_T, T_teacher)`.
+- Run the DyWeight student sampler from the same `x_T` using `Phi` and `T_student`.
+- Minimize a terminal supervision loss `dist(x_0^student, x_0^teacher)` and update `Phi`.
+- Sampling stage:
+- Initialize `x_N = x_T`, current time `t_N`, and a fixed-length buffer of recent gradients.
+- For each reverse step `n = N ... 1`:
+- Query the model at the scaled time `s_n * t_n`.
+- Convert the model output into the current gradient and push it into the history buffer.
+- Read the step-specific weight row `w_n` from `W`.
+- Form the weighted gradient combination `d_n = sum_i w_{n,i} * buffer[i]`.
+- Update the sample with `x_{n-1} = x_n + d_n * (t_{n-1} - t_n)`.
+- Shift the internal notion of the next query time using the same unconstrained weights: `tilde_t_{n-1} = t_n + sum_i w_{n,i} * (t_{n-1} - t_n)`.
+- Continue until the final sample is produced.
+state_variables_and_history=Current sample; per-step learned weight matrix `W`; per-step time-scaling vector `s`; gradient history buffer; teacher trajectory during optimization.
+nfe_accounting=Inference-time NFE matches the underlying multistep solver order, but the method fundamentally depends on offline distillation and learned per-step parameters.
+portability=incompatible
+repo_transfer_hypothesis=The only portable lesson is conceptual: few-step solvers need both history weighting and time calibration. Under the frozen contract, that suggests a deterministic local scale-calibration signal, not learned weights or teacher supervision.
+failure_or_reject_boundary=Reject any direct use because the gains come from learned per-step parameters and teacher-student optimization, both of which violate the fixed-pretrained `sample.py`-only contract.
+citation_followups=iPNDM; DPM-Solver++; UniPC; S4S; LD3; EPD
+status=ready
+
+## Paper Entry
+
+paper_id=stork_2025
+title=STORK: Faster Diffusion And Flow Matching Sampling By Resolving Both Stiffness And Structure-Dependence
+authors=Zheng Tan; Weizhen Wang; Andrea L. Bertozzi; Ernest K. Ryu
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2505.24210
+pdf_path=literature/pdfs/stork_2505.24210.pdf
+family=virtual-NFE stabilized Taylor orthogonal Runge-Kutta solver
+why_relevant=This newly added 2025 paper is the strongest fresh structure-independent solver candidate I found, and it clarifies why that whole direction is awkward under the current repo goals. It tackles stiffness through many virtual substeps rather than through the diffusion-specific exponential-integrator structure.
+core_claim=One can import stabilized Runge-Kutta ideas into diffusion and flow-matching sampling by replacing the many expensive substep model evaluations with Taylor-approximated virtual NFEs, yielding a structure-independent stiff solver that improves few-step quality across several models.
+assumptions=The sampler can maintain multiple previous velocity evaluations; it can approximate time derivatives of the velocity by finite differences; it can run a multi-substep stabilized Runge-Kutta recurrence inside each outer diffusion step; an Adams-Bashforth/Euler bootstrap is available for the first steps.
+complete_sampling_pseudocode=
+- Inputs: diffusion or flow-matching model velocity/noise predictor; outer reverse schedule `{t_i}`; chosen stabilized Runge-Kutta order `k in {1,2,4}`; number of internal substeps `s`; Taylor approximation order.
+- Bootstrap phase:
+- Use Euler for the first outer step.
+- Use short Adams-Bashforth startup steps until enough previous velocities are buffered for the chosen Taylor order.
+- For each remaining outer step from `t_i` to `t_{i-1}`:
+- Treat the outer interval as one super-step and initialize the first internal state `Y_0 = x_{t_i}`.
+- Evaluate the real model velocity/noise at the start of the super-step.
+- Approximate the remaining internal substep velocities with Taylor expansions around the current outer-step velocity, using finite differences built from buffered previous real velocities; these are the virtual NFEs.
+- Propagate the internal states through the stabilized orthogonal Runge-Kutta recurrence using the chosen SRK coefficients and the virtual NFEs.
+- Set `x_{t_{i-1}} = Y_s` after the final internal substep.
+- Update the velocity history buffer and continue until `x_0`.
+state_variables_and_history=Current outer-step sample; internal SRK states `Y_j`; buffered previous real velocities; finite-difference approximations of velocity derivatives; substep count `s`; Taylor order.
+nfe_accounting=The method reduces actual NFE by replacing most substep evaluations with Taylor-approximated virtual NFEs, but it still changes the internal step structure substantially and requires a multi-substep recurrence inside each outer diffusion step.
+portability=partial
+repo_transfer_hypothesis=A fully global STORK port is too broad and too complex for this repo's simplicity goal, but the paper sharpens one useful lesson: late-step stiffness can be attacked by localized virtual-substep stabilization rather than by a global schedule rewrite. If explored here, it should be an extremely localized one-step probe, not a whole-trajectory transplant.
+failure_or_reject_boundary=Reject a full STORK port if it requires many virtual substeps across the whole trajectory, broad bootstrap logic, or a large new recurrence that obscures the current mechanism story. That would overshoot the repo's "simple poster mechanism" target.
+citation_followups=SRK / RKC methods; DPM-Solver++; UniPC; DEIS
+status=ready
+
+## Session Takeaway
+
+- `DyWeight` reinforces a hard reject boundary: few-step solver coefficients and time shifts really do want to be step-specific, but learning them offline is out of scope here.
+- `STORK` shows a second hard boundary: structure-independent stiff solvers can help, but the practical route uses many virtual substeps and bootstrap logic, which is too global and too complex to be the next clean repo mechanism.
+- `Score Normalization for a Faster Diffusion Exponential Integrator Sampler` exposes a more portable residue than the current compensation family: late-stage error can come from score-magnitude miscalibration itself, not only from the direction of the history term.
+- The previous `DualFast` / `DC-Solver` branch already rejected additive current-score and buffer compensation on the approach steps, so the next family should not be another additive history blend.
+- The next clean synthesized target is therefore a localized online score-normalization family on top of `3d0ecd6`: keep the winning `{4}` midpoint plus `{3}` UniPC tail fixed, and calibrate only the two earlier approach steps with an online drift-norm reference rather than a learned or offline schedule.
+
+## Candidate Card
+
+family=localized_online_score_normalized_approach
+kind=mechanism
+external_anchor=Score Normalization for a Faster Diffusion Exponential Integrator Sampler (Xia et al., 2023); DyWeight: Dynamic Gradient Weighting for Few-Step Diffusion Sampling (Zhao et al., 2026)
+borrowed_mechanism=time-varying score/gradient scale calibration so the fast solver sees a better-conditioned late integrand without extra model evaluations
+synthesis_step=from the exact `3d0ecd6` paper base, keep the `{steps_left=4}` DPM-Solver-2 midpoint step and the `{steps_left=3}` UniPC corrector untouched, but on the two earlier approach steps `{5,6}` rescale the current drift toward the recent accepted-drift magnitude using an online per-sample norm reference from `prev_d_prime`, capped by the existing late predictor-ramp magnitude instead of a learned/offline table
+portability=direct
+base_commit=3d0ecd6
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should stay inside the usual dormant band because the branch is inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the remaining paper gap may be a late approach-step scale-calibration problem rather than another direction or schedule problem; online norm calibration should feed the winning midpoint-plus-UniPC tail with a better-conditioned state while leaving the low-NFE frontier unchanged
+expected_signature=the proxy frontier should remain inside the usual stable band; if promoted, paper block 0 should improve beyond the `3d0ecd6` base `1.92757` or at least outperform the recent trust-region near-ties
+ablation=if this family wins, keep the same `{5,6}` window but replace the online norm ratio with a constant `1.0` or a fixed scalar so we can distinguish true online calibration from the mere existence of another late branch
+kill_condition=any low-NFE drift outside the stable band, any instability on the approach steps, or any paper block-0 loss that clearly trails the `3d0ecd6` base
