@@ -187,9 +187,9 @@ def research_local_unipc_corrector_slope(
 def research_trend_update(
     prev_trend: torch.Tensor | None,
     d_cur: torch.Tensor,
-    prev_d_ref: torch.Tensor,
+    prev_d_cur: torch.Tensor,
 ) -> torch.Tensor:
-    drift_delta = d_cur - prev_d_ref
+    drift_delta = d_cur - prev_d_cur
     if prev_trend is None:
         return drift_delta
     return (1.0 - RESEARCH_STANDARD_TREND_SMOOTH) * prev_trend + RESEARCH_STANDARD_TREND_SMOOTH * drift_delta
@@ -259,8 +259,7 @@ def research_sampler(
             d_mid = (x_mid - denoised) / lambda_mid_sigma
             x_next = x_hat + h * d_mid
             if prev_d_cur is not None:
-                prev_trend_ref = prev_d_prime if prev_d_prime is not None else prev_d_cur
-                prev_trend = research_trend_update(prev_trend, d_cur, prev_trend_ref).detach()
+                prev_trend = research_trend_update(prev_trend, d_cur, prev_d_cur).detach()
             prev_d_cur = d_cur.detach()
             prev_d_prime = d_mid.detach()
             prev_h = h.detach()
@@ -273,8 +272,7 @@ def research_sampler(
         relax_flat = torch.zeros_like(alpha_flat)
         local_unipc = False
         if prev_d_cur is not None:
-            trend_ref = prev_d_prime if prev_d_prime is not None else prev_d_cur
-            trend_cur = research_trend_update(prev_trend, d_cur, trend_ref)
+            trend_cur = research_trend_update(prev_trend, d_cur, prev_d_cur)
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
             if bool(step_local_virtual_predictor[i]) and prev_h is not None:
                 predictor_step_ratio = (alpha_flat * h / prev_h).to(dtype=torch.float64)

@@ -5,10 +5,10 @@ This is the compact top-level index for the hierarchical literature workspace. R
 ## Current Snapshot
 
 - Current working paper base: `e2379ec`
-- Latest literature pass: [`pass_11`](passes/pass_11.md)
-- Latest pass trigger: the PFDiff-style springboard family produced two consecutive proxy misses, so `program.md` requires a fresh literature rotation before another family change.
-- Next queued candidate family: `localized_amed_mean_direction`
-- Current next action: keep `e2379ec` as the working base and screen the `localized_amed_mean_direction` candidate described in [`pass_11`](passes/pass_11.md).
+- Latest literature pass: [`pass_12`](passes/pass_12.md)
+- Latest pass trigger: the trend-consistent virtual-predictor family produced two consecutive `proxy_keep` outcomes (`de25906` and `a99fb43`), so `program.md` requires a hard reflection before promotion or rotation.
+- Next queued candidate family: `localized_trend_consistent_virtual_predictor`
+- Current next action: restore the cleaner `de25906` representative of the trend-consistent family and run the authoritative paper path on 8 GPUs; if it loses cleanly, close the family and rotate.
 
 ## Workspace Layout
 
@@ -33,6 +33,7 @@ This is the compact top-level index for the hierarchical literature workspace. R
 | `pass_09` | 2026-03-15 | `e2379ec` | 2 | `localized_stork_virtual_predictor` | [link](passes/pass_09.md) |
 | `pass_10` | 2026-03-15 | `e2379ec` | 3 | `localized_adaptive_predictor_allocation`, `localized_pfdiff_springboard_predictor` | [link](passes/pass_10.md) |
 | `pass_11` | 2026-03-15 | `e2379ec` | 2 | `localized_amed_mean_direction` | [link](passes/pass_11.md) |
+| `pass_12` | 2026-03-15 | `e2379ec` | 2 | `localized_trend_consistent_virtual_predictor` | [link](passes/pass_12.md) |
 
 ## Paper Index
 
@@ -86,5 +87,5 @@ This is the compact top-level index for the hierarchical literature workspace. R
 ## Read Order
 
 1. Start here for the current working base and the latest queued candidate.
-2. Open [`pass_11`](passes/pass_11.md) for the latest synthesis and candidate card.
-3. Open only the cited paper notes from `pass_11` when you need full pseudocode or portability details.
+2. Open [`pass_12`](passes/pass_12.md) for the latest reflection and immediate next action.
+3. Open only the cited paper notes from `pass_12` when you need full pseudocode or portability details.
