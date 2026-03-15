@@ -5,10 +5,10 @@ This is the compact top-level index for the hierarchical literature workspace. R
 ## Current Snapshot
 
 - Current working paper base: `e2379ec`
-- Latest literature pass: [`pass_16`](passes/pass_16.md)
-- Latest pass trigger: the first ERK-guided terminal-Heun paper run on `af251d0` finished as a full-row near-tie loss, so reflection now chooses one justified same-family calibration probe before the family is either kept or closed.
-- Next queued candidate family: `localized_erk_guided_terminal_heun`
-- Current next action: keep the ERK-guided localization and `w_con=0.5` gate, but reduce `w_stiff` from `0.75` to `0.5` and rerun the proxy sanity check before the paper-path calibration.
+- Latest literature pass: [`pass_17`](passes/pass_17.md)
+- Latest pass trigger: the reduced-scale ERK-guided terminal-Heun row on `e223901` produced only a paper micro-win/tie that is not strong enough to replace the simpler `e2379ec` base, so the family is now closed.
+- Next queued candidate family: `none yet`
+- Current next action: restore the exact `e2379ec` paper base and run another targeted follow-up search for a fresh deterministic zero-extra-NFE mechanism outside the already-closed history, embedded-error, and offline/search families.
 
 ## Workspace Layout
 
@@ -38,6 +38,7 @@ This is the compact top-level index for the hierarchical literature workspace. R
 | `pass_14` | 2026-03-15 | `e2379ec` | 1 | `localized_erk_guided_terminal_heun` | [link](passes/pass_14.md) |
 | `pass_15` | 2026-03-15 | `e2379ec` | 5 | `localized_erk_guided_terminal_heun` | [link](passes/pass_15.md) |
 | `pass_16` | 2026-03-15 | `e2379ec` | 3 | `localized_erk_guided_terminal_heun` | [link](passes/pass_16.md) |
+| `pass_17` | 2026-03-15 | `e2379ec` | 4 | `none yet` | [link](passes/pass_17.md) |
 
 ## Paper Index
 
@@ -92,5 +93,5 @@ This is the compact top-level index for the hierarchical literature workspace. R
 ## Read Order
 
 1. Start here for the current working base and the latest queued candidate.
-2. Open [`pass_16`](passes/pass_16.md) for the latest reflection and immediate next action.
-3. Open only the cited paper notes from `pass_16` when you need full pseudocode or portability details.
+2. Open [`pass_17`](passes/pass_17.md) for the latest reflection and immediate next action.
+3. Open only the cited paper notes from `pass_17` when you need full pseudocode or portability details.
