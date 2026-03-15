@@ -1687,8 +1687,24 @@ active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should 
 extra_nfe=0
 hypothesis=the current paper winner may still be slightly too sensitive to the most recent drift fluctuation on the approach step; using a recursively smoothed trend should preserve the useful late-direction information while damping the low-NFE softness that keeps appearing when raw history is perturbed
 expected_signature=the proxy frontier should at least match the dormant-band stability of `e2379ec` while improving the late full-step signal; compared with the closed residualized family, the `NFE=5` point should stay tighter to base instead of softening
-ablation=if this shows life, compare the same smoothed-trend construction using `prev_d_prime - prev_d_cur` as the incoming trend increment, so we can separate smoothing from raw-drift history choice
+ablation=if this shows life, compare the same smoothed-trend construction using `(d_cur - prev_d_prime)` as the incoming trend increment, so we can separate smoothing from raw-drift history choice
 kill_condition=any clear proxy loss versus `e2379ec`, any low-NFE drift outside the usual dormant band, or any sign that the smoothed trend simply behaves like another closed STORK-history tweak rather than a new family
+
+## Candidate Card
+
+family=localized_trend_consistent_virtual_predictor
+kind=ablation
+external_anchor=ETC: Training-Free Diffusion Models Acceleration with Error-Aware Trend Consistency (Xie et al., 2025); SADA: Stability-guided Adaptive Diffusion Acceleration (Jiang et al., 2025)
+borrowed_mechanism=keep the recursive trend smoother but swap the previous-history anchor from the raw prior drift to the accepted prior corrected slope
+synthesis_step=from commit `de25906`, keep the localized `{steps_left=5}` trend-consistent virtual predictor exactly as-is but change the incoming trend increment from `(d_cur - prev_d_cur)` to `(d_cur - prev_d_prime)` whenever the accepted previous slope is available, leaving the recursive smoothing coefficient, `{4}` midpoint entry step, `{3}` UniPC corrector, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=de25906
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the usual dormant band because only the single late predictor trend source changes
+extra_nfe=0
+hypothesis=the positive proxy sign suggests the smoothed trend itself is useful, but the current raw-drift increment may still be slightly stale for the lowest NFE point; anchoring the trend increment to the accepted previous slope could preserve the mid-band gains while tightening `NFE=5`
+expected_signature=the frontier should improve on `de25906 = 2.607512` or at least keep the win while reducing the `NFE=5` softness; a reversal at `NFE=9`/`NFE=13` would mean the family is another fragile history tweak
+ablation=if this loses clearly, close the trend-consistent family rather than stacking smoothing-factor scans
+kill_condition=any clear proxy loss versus both `de25906` and `e2379ec`, any new instability, or any broader low-NFE drift outside the usual dormant band
 
 ## Session Addendum
 
