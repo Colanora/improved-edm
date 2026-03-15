@@ -1551,6 +1551,95 @@ expected_signature=the proxy frontier should remain in the usual stable band; if
 ablation=if this family shows life, compare the same `{5}` placement using `prev_d_cur` instead of `prev_d_prime` so we can separate accepted-slope springboarding from raw-drift reuse
 kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 loss that clearly trails the `e2379ec` base
 
+## Session Addendum
+
+Session date: 2026-03-15
+Working paper base after AMED reject: `e2379ec`
+Reason for new pass: the AMED-style mean-direction family missed clearly on the proxy screen, so the next step needs a fresh literature pass before either another orthogonal family or a cleaner consolidation probe on the winning STORK mechanism.
+
+## Paper Entry
+
+paper_id=seeds_2023
+title=SEEDS: Exponential SDE Solvers for Fast High-Quality Sampling from Diffusion Models
+authors=Martin Gonzalez; Nelson Fernandez; Thuy Tran; Elies Gherbi; Hatem Hajri; Nader Masmoudi
+venue_or_source=arXiv
+year=2023
+url=https://arxiv.org/abs/2305.14267
+pdf_path=literature/pdfs/seeds_2305.14267.pdf
+family=stochastic exponential integrator solvers for reverse diffusion SDEs
+why_relevant=This newly added paper is a good fresh boundary for the current repo because it is one of the clearest high-quality fast-sampling papers that deliberately keeps stochasticity in the sampler rather than collapsing to a deterministic PF-ODE solver.
+core_claim=One can analytically handle the linear part of reverse diffusion SDEs, compute stochastic variance terms in closed form, and build derivative-free stochastic exponential solvers that recover or exceed prior SDE quality with far fewer NFEs.
+assumptions=Sampling is allowed to follow the reverse diffusion SDE rather than the deterministic PF-ODE; Gaussian noise increments are injected during inference; the solver may change variables and analytically manipulate stochastic integral terms.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model `F_theta` or data predictor; reverse time grid `{t_i}` from `T` to `0`; chosen SEEDS order and change-of-variables rule; standard Gaussian noise increments.
+- Rewrite the reverse diffusion dynamics in semi-linear SDE form `dx_t = [A(t) x_t + b(t) F_theta(x_t, t)] dt + g(t) dW_t`.
+- For each reverse step from `s` to `t`:
+- Analytically integrate the linear part through the exponential propagator `Phi_A(t, s)`.
+- Change variables so the deterministic neural-network integral becomes an exponentially weighted integral over a transformed coordinate.
+- Approximate the transformed deterministic integral with low-order derivative-free terms built from one or more model evaluations depending on the chosen SEEDS order.
+- Separately transform the stochastic integral and analytically compute its variance with the stochastic exponential time-differencing construction.
+- Sample the corresponding Gaussian increment with that variance and add it to the deterministic update.
+- Advance to the next time point and continue until the final sample is produced.
+state_variables_and_history=Current sample; transformed exponential propagator factors; current model evaluation and any low-order stage evaluations; analytically computed stochastic variance terms; Gaussian noise increments.
+nfe_accounting=The solver can be efficient in NFE, but it changes the sampling path to a stochastic reverse-SDE family with sampled noise increments.
+portability=partial
+repo_transfer_hypothesis=The only portable residue here is a negative one: exponential-integrator structure remains useful, but once stochastic variance terms are part of the mechanism the paper path is no longer the deterministic PF-ODE target used in this repo.
+failure_or_reject_boundary=Reject any SEEDS-like branch that injects stochastic noise, analytically computes SDE variance terms, or otherwise changes the deterministic paper path into a reverse-SDE benchmark.
+citation_followups=Exponential integrators; gDDIM; reverse diffusion SDE samplers; SETD methods
+status=ready
+
+## Paper Entry
+
+paper_id=gddim_2023
+title=GDDIM: Generalized Denoising Diffusion Implicit Models
+authors=Qinsheng Zhang; Molei Tao; Yongxin Chen
+venue_or_source=ICLR 2023
+year=2023
+url=https://arxiv.org/abs/2206.05564
+pdf_path=literature/pdfs/gddim_2206.05564.pdf
+family=deterministic DDIM-style accelerated sampling for general diffusion models
+why_relevant=This newly added paper is useful because it explains DDIM from a numerical-analysis perspective and directly contrasts deterministic probability-flow sampling with stochastic sampling in the few-step regime.
+core_claim=DDIM acceleration can be understood as a specific score approximation when solving the corresponding diffusion SDE or PF-ODE, and the deterministic probability-flow version works especially well in few-step sampling because a single score evaluation recovers more accurate directional information than the stochastic alternative.
+assumptions=The model may be reparameterized appropriately for the diffusion family; deterministic PF-ODE sampling is allowed; the useful score information remains smooth along the exact trajectory.
+complete_sampling_pseudocode=
+- Inputs: pretrained score/noise model for a diffusion family; reverse time grid `{t_i}`; choice of deterministic (`lambda = 0`) or stochastic (`lambda > 0`) generalized DDIM.
+- Express the model's reverse sampling dynamics as the generalized family `du = [F_t u - (1 + lambda^2)/2 * G_t G_t^T s_theta(u, t)] dt + lambda G_t dw`.
+- For deterministic fast sampling, set `lambda = 0` to obtain the probability-flow ODE.
+- At each reverse step:
+- Use the current state and one model evaluation to approximate the score information needed for the next state under the DDIM-style closed-form update.
+- Apply the deterministic update rule over the chosen grid to obtain the next sample state.
+- Continue until the final state is reached.
+- For the stochastic variant, add the corresponding Gaussian increment term controlled by `lambda`, but the paper emphasizes that the deterministic scheme is usually superior at very small step counts.
+state_variables_and_history=Current sample; model output at the current step; reverse time grid; parameterization matrices/functions defining the diffusion family; optional stochastic noise increment if `lambda > 0`.
+nfe_accounting=The deterministic variant is efficient and keeps a fixed score-evaluation budget, but the core lesson of the paper is explanatory rather than a new local plug-in mechanism for this repo.
+portability=partial
+repo_transfer_hypothesis=The useful transferable residue is that deterministic PF-ODE updates tend to dominate stochastic ones in the few-step regime, reinforcing that the repo should keep exploiting better local deterministic directions rather than adding stochasticity or another schedule-only warp.
+failure_or_reject_boundary=Reject any gDDIM-inspired branch that is merely another global schedule or parameterization rewrite without a localized mechanism; the paper is more helpful here as a deterministic-selection principle than as a direct plug-in sampler edit.
+citation_followups=DDIM; PF-ODE; generalized diffusion parameterizations; reverse-SDE versus ODE analysis
+status=ready
+
+## Session Takeaway
+
+- `SEEDS` and `gDDIM` sharpen the deterministic-vs-stochastic boundary around the current paper winner: both papers explain why there is real few-step headroom in richer solvers, but they also make it clearer that this repo should stay on the deterministic PF-ODE side rather than borrowing stochastic variance terms.
+- Together with `STORK`, these papers suggest the current winning mechanism is pointing in the right direction already: the local history vector used to synthesize the late predictor direction matters more than another global schedule or another state springboard.
+- The cleanest next consolidation probe is therefore still inside the STORK family: keep the single `{steps_left=5}` virtual-stage construction, but replace the raw previous drift `prev_d_cur` with the accepted previous corrected slope `prev_d_prime` when estimating the virtual predictor direction.
+
+## Candidate Card
+
+family=localized_stork_virtual_predictor
+kind=consolidation
+external_anchor=STORK: Faster Diffusion And Flow Matching Sampling By Resolving Both Stiffness And Structure-Dependence (Tan et al., 2025); GDDIM: Generalized Denoising Diffusion Implicit Models (Zhang et al., 2023)
+borrowed_mechanism=preserve the deterministic virtual-stage predictor idea, but use a more accepted local history vector when estimating the predictor-time slope
+synthesis_step=from the exact `e2379ec` paper base, keep the same single `{steps_left=5}` STORK-inspired virtual predictor placement and replace the history difference `(d_cur - prev_d_cur)` with `(d_cur - prev_d_prime)` whenever `prev_d_prime` is available, leaving the `{4}` midpoint entry step, `{3}` UniPC corrector, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=e2379ec
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the usual dormant band because the branch is inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the STORK family already won on paper, but the best local history vector may be the accepted previous corrected slope rather than the raw previous drift; using `prev_d_prime` could yield a cleaner virtual-stage direction on the single late approach step without broadening the family
+expected_signature=the proxy frontier should stay at least as strong as `e2379ec` and ideally improve on the `2.607516` proxy reference; if promoted, paper block 0 should stay near or improve on `1.92366`
+ablation=if this shows life, compare the same `{5}` placement using a gated blend of `prev_d_cur` and `prev_d_prime` rather than a hard swap
+kill_condition=any low-NFE drift outside the stable band, any instability, or any proxy loss large enough to show that the accepted-slope history is weaker than the current `e2379ec` history choice
+
 ## Candidate Card
 
 family=localized_pfdiff_springboard_predictor
