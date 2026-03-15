@@ -270,7 +270,7 @@ def research_sampler(
         memory_flat = torch.zeros_like(alpha_flat)
         relax_flat = torch.zeros_like(alpha_flat)
         local_unipc = False
-        local_past_springboard = bool(step_local_past_springboard[i]) and prev_d_prime is not None
+        local_past_springboard = bool(step_local_past_springboard[i]) and prev_d_cur is not None
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
             if bool(step_local_virtual_predictor[i]) and prev_h is not None:
@@ -295,7 +295,7 @@ def research_sampler(
                 relax_flat = torch.zeros_like(relax_flat)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
         if local_past_springboard:
-            x_prime = x_hat + alpha * h * prev_d_prime
+            x_prime = x_hat + alpha * h * prev_d_cur
         else:
             x_prime = x_hat + alpha * h * predictor_d
         t_prime_input = t_hat + alpha_flat * h

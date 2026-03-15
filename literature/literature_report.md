@@ -1550,3 +1550,19 @@ hypothesis=the remaining full-step error may be predictor-state placement rather
 expected_signature=the proxy frontier should remain in the usual stable band; if promoted, paper block 0 should stay near or improve on the `e2379ec` base `1.92366`, while a clear loss would reject the springboard-state family as less portable than the virtual-drift family
 ablation=if this family shows life, compare the same `{5}` placement using `prev_d_cur` instead of `prev_d_prime` so we can separate accepted-slope springboarding from raw-drift reuse
 kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 loss that clearly trails the `e2379ec` base
+
+## Candidate Card
+
+family=localized_pfdiff_springboard_predictor
+kind=ablation
+external_anchor=PFDiff: Training-Free Acceleration of Diffusion Models Combining Past and Future Scores (Wang et al., 2025); FSampler: Training-Free Acceleration of Diffusion Sampling via Epsilon Extrapolation (Vladimir, 2025)
+borrowed_mechanism=keep the same single-step springboard-state family but change which cached past signal defines the springboard, testing raw drift reuse against accepted-slope reuse
+synthesis_step=from the exact `e2379ec` base and the just-screened `1082d40` springboard family, keep the same single `{steps_left=5}` springboard placement and replace `prev_d_prime` with the raw previous drift `prev_d_cur` in the predictor-state construction `x_spring = x_hat + alpha * h * prev_d_cur`, leaving the `{4}` midpoint entry step, `{3}` UniPC corrector, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=e2379ec
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the usual dormant band because the springboard branch is inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the near-tie miss of `1082d40` suggests that a late springboard state may be directionally sound, but the accepted predictor slope could be slightly over-advanced; using the raw previous drift may yield a cleaner one-step springboard into the winning midpoint-plus-UniPC tail
+expected_signature=the proxy frontier should beat `1082d40` and ideally return to or improve on the `e2379ec` proxy reference; if it weakens again, the springboard-state family should be closed and treated as inferior to the STORK virtual-drift family
+ablation=if this also weakens, rotate away from springboard-state variants instead of testing more cached-signal choices
+kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 signal that would clearly trail the `e2379ec` base
