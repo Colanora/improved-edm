@@ -183,6 +183,19 @@ def research_local_unipc_corrector_slope(
     )
 
 
+def research_local_obelm_predictor_state(
+    x_prev: torch.Tensor,
+    x_cur: torch.Tensor,
+    d_cur: torch.Tensor,
+    h_cur: torch.Tensor,
+    h_prev: torch.Tensor,
+) -> torch.Tensor:
+    prev_weight = (h_cur / h_prev).square()
+    cur_weight = 1.0 - prev_weight
+    drift_weight = h_cur * (h_cur + h_prev) / h_prev
+    return prev_weight * x_prev + cur_weight * x_cur - drift_weight * d_cur
+
+
 def research_sampler(
     net,
     latents,
@@ -220,6 +233,7 @@ def research_sampler(
     prev_d_cur = None
     prev_d_prime = None
     prev_h = None
+    prev_x_state = None
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -248,6 +262,7 @@ def research_sampler(
             prev_d_cur = d_cur.detach()
             prev_d_prime = d_mid.detach()
             prev_h = h.detach()
+            prev_x_state = x_hat.detach()
             continue
 
         predictor_d = d_cur
@@ -256,9 +271,13 @@ def research_sampler(
         memory_flat = torch.zeros_like(alpha_flat)
         relax_flat = torch.zeros_like(alpha_flat)
         local_unipc = False
+        local_obelm_predictor = False
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
-            if bool(step_local_virtual_predictor[i]) and prev_h is not None:
+            local_obelm_predictor = bool(step_local_virtual_predictor[i]) and prev_h is not None and prev_x_state is not None
+            if local_obelm_predictor:
+                predictor_d = d_cur
+            elif bool(step_local_virtual_predictor[i]) and prev_h is not None:
                 predictor_step_ratio = (alpha_flat * h / prev_h).to(dtype=torch.float64)
                 predictor_d = d_cur + predictor_step_ratio.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
             else:
@@ -278,9 +297,17 @@ def research_sampler(
                 alpha_flat = torch.ones_like(alpha_flat)
                 memory_flat = torch.zeros_like(memory_flat)
                 relax_flat = torch.zeros_like(relax_flat)
+            elif local_obelm_predictor:
+                alpha_flat = torch.ones_like(alpha_flat)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
-        x_prime = x_hat + alpha * h * predictor_d
-        t_prime_input = t_hat + alpha_flat * h
+        if local_obelm_predictor:
+            h_cur_mag = (-h).to(dtype=torch.float64)
+            h_prev_mag = (-prev_h).to(dtype=torch.float64)
+            x_prime = research_local_obelm_predictor_state(prev_x_state, x_hat, d_cur, h_cur_mag, h_prev_mag)
+            t_prime_input = torch.ones_like(alpha_flat) * t_next
+        else:
+            x_prime = x_hat + alpha * h * predictor_d
+            t_prime_input = t_hat + alpha_flat * h
         denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
         t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
         d_prime = (x_prime - denoised) / t_prime
@@ -298,6 +325,7 @@ def research_sampler(
         prev_d_cur = d_cur.detach()
         prev_d_prime = d_prime.detach()
         prev_h = h.detach()
+        prev_x_state = x_hat.detach()
 
     return x_next
 
