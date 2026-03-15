@@ -69,7 +69,7 @@ Rules:
 At the start of every session:
 
 1. Read `README.md`, `AGENTS.md`, `program.md`, `sample.py`, and `paper_eval.py`.
-2. Read `results.tsv`, `paper_results.tsv`, `experiment_reports.tsv`, and the literature workspace files if they exist.
+2. Read `results.tsv`, `paper_results.tsv`, `experiment_reports.tsv`, and the literature workspace if it exists. Start with `literature/literature_report.md`, then open the latest pass file and only the paper notes relevant to the active family.
 3. Derive these references from the current checkout:
    - `proxy_heun_ref`
    - `proxy_research_best`
@@ -84,14 +84,17 @@ At the start of every session:
 8. If the current `sample.py` does **not** match `working_base`, restore or reconstruct `working_base` before testing a new idea.
 9. Inspect recent **research** commits and the latest report rows so you do not repeat a dead family.
 10. Initialize or update the literature workspace:
-    - `literature/pdfs/`
     - `literature/literature_report.md`
-11. Complete a **session literature pass** and write the required full-text notes before any serious edit, candidate card, or evaluation run.
+    - `literature/papers/`
+    - `literature/passes/`
+    - `literature/pdfs/`
+11. Complete a **hard reflection pass** over the current literature workspace and recent evidence before any serious edit, candidate card, or evaluation run.
 
 Rules:
 
 - A proxy-only curiosity must not replace a paper-qualified base.
-- A session literature pass is a **hard gate**: no edit to `sample.py`, no candidate card, and no evaluation run until it is done.
+- A hard reflection pass is a **hard gate**: no edit to `sample.py`, no candidate card, and no evaluation run until it is done.
+- A fresh discovery pass is **not** required at the start of every session. Reuse the existing literature workspace first, and read new papers only if reflection identifies a concrete unresolved question or no unused viable primary anchor remains.
 
 ---
 
@@ -99,28 +102,56 @@ Rules:
 A research session follows this loop:
 
 1. **Bootstrap and restore base.**
-2. **Run a session literature pass** and update the literature workspace until at least one candidate family is literature-grounded and pseudocode-ready.
-3. **Write one candidate card** for one hypothesis.
-4. **Edit `sample.py`** to implement exactly that hypothesis.
-5. **Run evaluation** in the 2-layer protocol:
+2. **Run a hard reflection pass** on the current literature workspace, recent results, and the active family state.
+3. If reflection returns `targeted_followup_required`, do a **targeted literature follow-up or discovery pass**, update the literature workspace, and return to **step 2**.
+4. **Write one candidate card** for one hypothesis.
+5. **Edit `sample.py`** to implement exactly that hypothesis.
+6. **Run evaluation** in the 2-layer protocol:
    - a **5k proxy** check,
    - and a paper-path check whenever promotion is justified.
-6. **Decide keep / discard / ablate / rotate** using the higher-tier evidence.
-7. **Report what was learned**, including the literature takeaway that produced or rejected the idea.
-8. Repeat from step 2 or step 3 as appropriate:
-   - return to **step 2** when the family rotates, the current family has 2 misses, the current family has 2 `paper_micro_win` outcomes without closing the gap, or the literature notes are still incomplete,
-   - otherwise continue from **step 3** with the current family.
+7. **Decide keep / discard / ablate / rotate** using the higher-tier evidence.
+8. **Report what was learned**, including whether existing literature was sufficient or what exact gap forced new reading.
+9. Repeat from **step 2** before the next serious experiment:
+   - reflection is mandatory again when the family rotates, the current family has 2 misses, the current family has 2 `paper_micro_win` outcomes without closing the gap, the next move is an ablation or calibration probe, or the literature notes are still incomplete,
+   - if reflection says the existing reviewed papers already cover the next move, continue without adding new papers,
+   - if reflection says a gap remains, do only the narrow follow-up reading needed and then rerun reflection.
 
 Termination condition:
 
-- Stop only when a result satisfies the **Poster rule**, or when the current family is rejected and a new literature pass is required.
+- Stop only when a result satisfies the **Poster rule**, or when the current family is rejected and reflection concludes that a targeted follow-up literature pass is required before any further move.
 
 Rules:
 
-- The default micro-loop is **literature -> candidate -> edit -> evaluate -> decide -> report**.
-- The agent must not collapse the loop into pure `edit -> run -> tweak -> run` behavior.
-- The literature pass is not a box-checking ritual; it must feed the next concrete mechanism idea, reject boundary, baseline probe, or ablation.
+- The default micro-loop is **reflection -> candidate -> edit -> evaluate -> decide -> report**.
+- The expanded loop is **reflection -> (targeted follow-up only if needed) -> candidate -> edit -> evaluate -> decide -> report**.
+- The agent must not collapse the loop into pure `edit -> run -> tweak -> run` behavior or into endless `search -> read -> search -> read` behavior.
+- After a long literature journey, hard reflection must explicitly choose the highest-value next move from the papers already reviewed. The paper pool is finite, and not every new search will yield a valuable paper.
+- The reflection pass is not a box-checking ritual; it must feed the next concrete mechanism idea, reject boundary, baseline probe, ablation, or explicit decision that no new paper is needed this turn.
 - Keep a 2-track cadence: **incumbent consolidation** (ablation or simplification of the best paper-supported family) and **orthogonal family exploration** (a genuinely different mechanism family). Do not stay indefinitely inside near-neighbor late-stage Heun variants.
+
+---
+
+## Hard reflection stage
+Before any candidate card, serious edit, or evaluation, run a hard reflection pass over the current results and literature workspace.
+
+Each reflection pass must produce:
+
+- `pass_kind=reflection`
+- `primary_anchor=` one reviewed paper that is still `primary_use=unused`, or `none` if the next move is a same-family ablation or calibration probe that does not need a new primary anchor
+- `technical_check_refs=` reviewed papers reopened only to verify details, derivations, edge cases, appendix logic, code behavior, or citations
+- `next_move=` one of `new_family|ablation|calibration_probe|reject_and_rotate`
+- `highest_value_rationale=` why this is the single most valuable next move available from the literature already collected
+- `reflection_verdict=existing_literature_sufficient|targeted_followup_required`
+- `followup_question=` the exact unresolved technical question or missing family gap when `reflection_verdict=targeted_followup_required`
+
+Rules:
+
+- Treat the reviewed paper pool as finite. Do **not** keep expanding it by default.
+- Every reviewed paper may be used only once as a new `primary_anchor` for a family line.
+- A paper already marked `primary_use=used` may still be reopened in `technical_check_refs` whenever you want to be humble about the details and verify the technique more deeply.
+- If an existing reviewed paper, appendix, citation trail, or official code/doc can answer the current question, revisit it instead of reading a new paper.
+- Only when no existing reviewed source can answer the question, or no unused viable `primary_anchor` remains for the next move, may reflection escalate to targeted external discovery.
+- If reflection yields `targeted_followup_required`, stop before the candidate card, serious edit, and evaluation. Do only the narrow follow-up reading needed, then rerun reflection.
 
 ---
 
@@ -129,8 +160,10 @@ Maintain a local literature workspace inside the repo root:
 
 ```text
 literature/
-  pdfs/
   literature_report.md
+  papers/
+  passes/
+  pdfs/
 ```
 
 Rules:
@@ -138,10 +171,13 @@ Rules:
 - Every primary external paper used to justify a candidate family must be downloaded as a **local PDF file** into `literature/pdfs/` before that family can proceed to a serious edit.
 - The agent must read from the **full text** of the local PDF, not just the abstract, title, memory, or a short web summary.
 - If a source does not have an accessible PDF, it may be used only as a secondary hint, not as the primary anchor for a serious candidate family.
-- `literature/literature_report.md` is the authoritative literature ledger for the session. If it is missing or incomplete, the literature pass is incomplete.
-- Each paper entry in `literature/literature_report.md` must include enough detail that another agent could reconstruct the sampler mechanism without reopening the paper.
+- `literature/literature_report.md` is the authoritative top-level literature index and current-state ledger for the session. If it is missing or incomplete, the reflection pass is incomplete.
+- Keep `literature/literature_report.md` compact: it should say the current working base, the latest reflection or follow-up pass, the current active or next candidate family, the current next action, whether existing literature is sufficient, and the paper/pass indexes.
+- Each paper note in `literature/papers/<paper_id>.md` is the authoritative full-text note for that paper and must include enough detail that another agent could reconstruct the sampler mechanism without reopening the paper.
+- Each pass file in `literature/passes/pass_XX.md` is the authoritative chronological synthesis record for a reflection pass, discovery pass, or follow-up check.
+- Read the root report first, then the latest pass file, then only the paper notes you need.
 
-Each paper entry must contain:
+Each paper note must contain:
 
 - `paper_id`
 - `title`
@@ -161,7 +197,26 @@ Each paper entry must contain:
 - `repo_transfer_hypothesis`
 - `failure_or_reject_boundary`
 - `citation_followups`
+- `primary_use=unused|used`
+- `primary_use_family=none|<family>`
 - `status=ready|uncertain|rejected`
+
+Each pass file must contain:
+
+- `pass_id`
+- `pass_kind=reflection|discovery|followup_check`
+- `session_date`
+- `working_paper_base`
+- `trigger`
+- `paper_refs`
+- `primary_anchor`
+- `technical_check_refs`
+- `new_paper_refs`
+- `candidate_families`
+- `reflection_verdict=existing_literature_sufficient|targeted_followup_required`
+- `followup_question`
+- the pass takeaway
+- the candidate cards produced from that pass
 
 Rules for `complete_sampling_pseudocode`:
 
@@ -171,37 +226,50 @@ Rules for `complete_sampling_pseudocode`:
 - If the paper does not provide literal pseudocode, reconstruct it from the full method section, equations, appendix, or official code, and note that it is reconstructed.
 - If a critical detail is still unclear after reading the paper, appendix, and official code/docs, mark the entry `status=uncertain` and **do not proceed** using that paper as a primary anchor.
 
-A literature pass is complete only when the workspace contains:
+A paper's one primary use belongs to the family named in `primary_use_family`.
+
+Rules:
+
+- Same-family ablations, simplifications, and calibration probes may keep citing that family's original `external_anchor`, but this does **not** create a new primary use.
+- A paper already assigned to one family line may not later be reintroduced as a fresh `primary_anchor` for a different family.
+
+A reflection/discovery cycle is recorded completely only when the workspace contains:
 
 - the local PDFs,
 - a filled `literature/literature_report.md`,
-- and at least one `status=ready` source whose pseudocode and portability judgment are complete enough to support a candidate card.
+- the current `literature/passes/pass_XX.md`,
+- and either:
+  - at least one `status=ready` paper note whose pseudocode, portability judgment, and `primary_use` state are complete enough to support the selected `primary_anchor`,
+  - or an explicit `followup_question` explaining why no serious edit or run may proceed yet.
 
 ---
 
-## Mandatory external research stage
-The agent must actively use web search for current sampler research. Repo-local notes, user-provided papers, provided links, citation chains, related-work sections, and model memory are seeds, not substitutes.
+## Targeted external research stage
+The agent must actively use web search for current sampler research when hard reflection identifies a real gap. Repo-local notes, user-provided papers, provided links, citation chains, related-work sections, and model memory are seeds, not substitutes once a missing detail or missing family has been identified.
 
-Do a literature pass at the start of every session, and again whenever:
+Run targeted external discovery or follow-up only when:
 
-- the active family has **2 misses**,
-- the active family has **2 paper_micro_wins** without closing the gap to Heun,
-- you switch to a new family,
-- or the current literature notes are still marked `uncertain` for the active family.
+- hard reflection returns `targeted_followup_required`,
+- no unused viable `primary_anchor` remains for the next move,
+- a critical technical detail remains unresolved after reopening the relevant reviewed papers or notes,
+- you switch to a new family and the current workspace has no ready unused anchor for that family,
+- or the current literature notes are still marked `uncertain` for the active family after exhausting the existing reviewed sources.
 
-For each literature pass:
+For each targeted discovery or follow-up pass:
 
-1. Read **3 to 5** relevant external papers or high-quality public method docs.
-2. Prefer **recent** sources, especially **2025-2026** papers, when searching for fresh ideas, modern variants, and follow-up mechanisms.
-3. Still include older seminal papers when they define the family or are needed to reconstruct the mechanism correctly.
-4. Prefer sources from arXiv, OpenReview, NeurIPS/ICLR/ICML/CVPR proceedings, or official code repos.
-5. Do **not** limit the pass to methods, papers, or links already named in this repo, prompt, or old notes.
-6. At least **2** sources in each pass must be independently discovered external sources that were **not** already listed in the repo or the immediate task prompt.
-7. Download the primary paper PDFs into `literature/pdfs/` before using them as anchors.
-8. Read the **full docs** and summarize them in `literature/literature_report.md`.
-9. Extract the sampler's complete pseudocode and portability judgment for each primary source.
-10. Follow promising leads from the paper's **citations, bibliography, appendix, or related work** when they help clarify mechanism details, reveal newer variants, or open a better synthesized idea.
-11. When a paper looks especially relevant but underspecified, do at least **one deeper follow-up** through its citations, related work, or official code/docs before using it as the main anchor.
+1. Write the exact `followup_question` or missing-family gap before searching for anything new.
+2. Reopen the relevant reviewed paper notes, local PDFs, appendix sections, citation trails, and official code/docs first.
+3. Only if the gap remains unresolved, read the smallest new external set needed to close it, usually **1 to 2** papers or high-quality public method docs and at most **3**.
+4. Prefer **recent** sources, especially **2025-2026** papers, when searching for fresh ideas, modern variants, and follow-up mechanisms.
+5. Still include older seminal papers when they define the family or are needed to reconstruct the mechanism correctly.
+6. Prefer sources from arXiv, OpenReview, NeurIPS/ICLR/ICML/CVPR proceedings, or official code repos.
+7. Do **not** read new papers just to satisfy ritual, quota, or session freshness.
+8. Download the primary paper PDFs into `literature/pdfs/` before using them as anchors.
+9. Read the **full docs** and summarize them in the corresponding paper notes under `literature/papers/`.
+10. Extract the sampler's complete pseudocode, portability judgment, and `primary_use` state for each primary source, and update the current `literature/passes/pass_XX.md` with the takeaway, reject boundary, and candidate cards produced by the pass.
+11. Follow promising leads from the paper's **citations, bibliography, appendix, or related work** when they help clarify mechanism details, reveal newer variants, or answer the exact follow-up question.
+12. When a paper looks especially relevant but underspecified, do at least **one deeper follow-up** through its citations, related work, or official code/docs before using it as the main anchor.
+13. After any new reading, rerun hard reflection and explicitly decide whether the existing literature is now sufficient.
 
 Rules:
 
@@ -212,10 +280,11 @@ Rules:
   - `incompatible` = requires retraining, learned coefficients, extra models, or harness changes
 - Prefer `direct` families for mainline implementation.
 - Prefer `extra_nfe = 0` families unless there is a very strong reason otherwise.
-- When a strong paper is judged `partial` or `incompatible`, write the exact blocker in `literature/literature_report.md`. Do **not** silently compress it into a nearby Heun patch and call that a faithful probe.
-- The literature pass is incomplete unless the literature workspace is written down **before** any serious edit or run.
-- Internal memory of known methods does **not** satisfy this requirement; the pass must include session-fetched external sources.
+- When a strong paper is judged `partial` or `incompatible`, write the exact blocker in the relevant `literature/papers/<paper_id>.md` and mention it in the current `literature/passes/pass_XX.md`. Do **not** silently compress it into a nearby Heun patch and call that a faithful probe.
+- A targeted discovery pass is incomplete unless the literature workspace is written down **before** any serious edit or run that depends on it.
+- Internal memory of known methods does **not** satisfy this requirement when reflection has already determined that external follow-up is needed.
 - Recent papers are a **search preference**, not a ban on older anchors. Do **not** rely only on repo-local paper notes or only on the active code family.
+- A previously used `primary_anchor` may still appear in `technical_check_refs`, but it may not be recycled as the next new family's primary source.
 
 ---
 
@@ -224,7 +293,10 @@ Literature is a tool for generating new, simple, repo-suited ideas. It is **not*
 
 Rules:
 
-- Each serious literature pass must produce at least **one synthesized candidate family**: a mechanism idea that is informed by external work but explicitly adapted, simplified, combined, or redirected for this fixed-pretrained, `sample.py`-only setting.
+- Each serious reflection cycle must produce at least one of:
+  - a synthesized candidate family,
+  - a justified same-family ablation or calibration probe,
+  - or a sharper reject boundary that explains why targeted follow-up or rotation is needed next.
 - Reproducing an external method or running a literature baseline is allowed only as a **calibration probe**, **translation probe**, **baseline comparison**, or **ablation scaffold**.
 - If you run a near-direct reproduction or literature baseline, you must state what it is teaching you and what new mechanism idea, reject boundary, or ablation it enables next.
 - A session is not successful if it only replays named literature methods without producing a sharper reject boundary, a portability lesson, a baseline calibration, or a new candidate mechanism.
@@ -241,6 +313,7 @@ Required fields:
 family=
 kind=mechanism|tuning
 external_anchor=
+technical_check_refs=
 borrowed_mechanism=
 synthesis_step=
 portability=direct|partial|incompatible
@@ -258,8 +331,11 @@ Rules:
 - One candidate card = one idea.
 - `family` must describe a mechanism family, not a commit hash.
 - `kind=tuning` is allowed only if it is anchored to a live mechanism family.
-- `external_anchor` must cite a real external method, paper, or public method doc whose full text has already been logged in the literature workspace.
+- `external_anchor` must cite the single real external method, paper, or public method doc whose full text has already been logged in the literature workspace and whose family line owns the candidate.
+- `technical_check_refs` lists previously reviewed papers or docs reopened only for detail verification; write `none` when there are no supporting detail checks.
+- `external_anchor` may remain the same for later same-family ablations or calibration probes, but it may not be reassigned as a fresh primary anchor for a different family.
 - `borrowed_mechanism` must state what specific idea is being imported from the anchor.
+- Supporting detail checks may clarify the implementation, but they may not replace the `external_anchor` as the main source of the idea.
 - `synthesis_step` must state what is new, simplified, combined, or redirected for this repo relative to the anchor; if the candidate is a near-direct reproduction, write `none` and justify the probe value.
 - If the candidate claims to be a new family, it must state what makes it mechanistically different from the current `working_base`; window changes, gate shifts, or coefficient twiddles alone do not qualify.
 - If you cannot explain the idea in this format, the idea is not ready.
@@ -427,10 +503,12 @@ Each report row must state:
 - mechanistic takeaway
 - concrete next action
 
-If a literature pass occurred since the last report, also state:
+If a reflection pass or targeted discovery pass occurred since the last report, also state:
 
-- the main `external_anchor` set consulted,
-- the main `pdf_path` set added,
+- whether the turn was `reflection_only` or `new_literature_added`,
+- why no new paper was needed, or the exact `followup_question` that forced new reading,
+- the main `external_anchor` and `technical_check_refs` consulted,
+- the main `pdf_path` set added, if any,
 - the portability takeaway,
 - the baseline or reproduction lesson if any,
 - and the synthesized idea or reject boundary it produced.
@@ -460,14 +538,18 @@ Do **not**:
 - keep editing on top of an unverified weaker base,
 - select incumbents by a single lucky `fid_min` while ignoring the rest of the paper row,
 - rename near-neighbor gate/window/constant tweaks as a new family,
+- skip hard reflection and jump from accumulated reading straight into experiments,
+- assume every session or every miss requires a fresh broad literature sweep,
+- keep adding papers when the current reviewed set already answers the real technical question,
+- reuse a previously consumed primary anchor as if it were a brand-new family source,
 - silently compress a `partial` literature method into a nearby Heun patch without writing the portability loss,
 - stay trapped in one family because it is easy to tune,
-- skip literature search and reinvent old sampler ideas blindly,
-- limit literature search to repo-provided or already-named methods,
+- skip targeted literature follow-up when reflection has exposed a real gap and instead reinvent old sampler ideas blindly,
+- limit targeted follow-up search to repo-provided or already-named methods once reflection has shown a real gap,
 - treat literature search as a box-checking ritual,
 - read only abstracts or summaries when the method details matter,
 - use a paper as a primary anchor without downloading and reading its PDF,
-- proceed when the literature report still lacks correct sampler pseudocode,
+- proceed when the literature workspace still lacks the required paper-note pseudocode,
 - replay named methods from papers without extracting a repo-suited mechanism idea,
 - waste budget on repeated full paper sweeps beyond the official protocol,
 - claim poster-level progress without a paper-path win over Heun,
