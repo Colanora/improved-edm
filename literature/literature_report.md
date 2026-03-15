@@ -1566,3 +1566,94 @@ hypothesis=the near-tie miss of `1082d40` suggests that a late springboard state
 expected_signature=the proxy frontier should beat `1082d40` and ideally return to or improve on the `e2379ec` proxy reference; if it weakens again, the springboard-state family should be closed and treated as inferior to the STORK virtual-drift family
 ablation=if this also weakens, rotate away from springboard-state variants instead of testing more cached-signal choices
 kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 signal that would clearly trail the `e2379ec` base
+
+## Session Addendum
+
+Session date: 2026-03-15
+Working paper base after springboard-family closeout: `e2379ec`
+Reason for new pass: the PFDiff-style springboard family produced two consecutive proxy misses, so `program.md` requires a fresh literature rotation before another family change.
+
+## Paper Entry
+
+paper_id=amed_solver_2024
+title=Fast ODE-based Sampling for Diffusion Models in Around 5 Steps
+authors=Zhenyu Zhou; Defang Chen; Can Wang; Chun Chen
+venue_or_source=arXiv
+year=2024
+url=https://arxiv.org/abs/2312.00094
+pdf_path=literature/pdfs/amed_solver_2312.00094.pdf
+family=learned approximate mean-direction single-step solver and plugin
+why_relevant=This newly added paper is the cleanest fresh source for a geometric "mean direction" family. It argues that fast-sampling trajectories approximately live in a two-dimensional subspace and that the useful update direction is a mean direction inside that local plane rather than a purely local truncation formula.
+core_claim=At extremely low NFE, high-order ODE solvers still suffer from truncation error; one can instead learn an intermediate evaluation location and scaling factor that directly approximate the mean direction of the PF-ODE integral, and the same idea can be plugged into existing ODE samplers.
+assumptions=A shallow predictor can be trained by distillation against teacher trajectories; each sampling path is approximately low-dimensional; the solver may choose an intermediate time `s_n` and a scaling factor `c_n` for each step.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model in PF-ODE form; N-step schedule `{t_n}`; learned AMED predictor `g_phi`; optional base ODE solver to receive the AMED plugin.
+- Teacher-data stage:
+- Generate dense teacher trajectories `{y_{t_n}}` with a strong solver.
+- For each student step from `t_{n+1}` to `t_n`, train `g_phi` to predict an intermediate time `s_n in (t_n, t_{n+1})` and a scaling factor `c_n`.
+- AMED single-step inference:
+- Query `g_phi` on the current student state and nearby teacher/student context to obtain `(s_n, c_n)`.
+- Evaluate the diffusion model at the intermediate state `x_{s_n}` and time `s_n`.
+- Update the sample with the learned mean-direction rule `x_{t_n} = x_{t_{n+1}} + c_n * (t_n - t_{n+1}) * epsilon_theta(x_{s_n}, s_n)`.
+- AMED plugin mode:
+- Replace the heuristic intermediate location and scale inside an existing ODE solver (for example generalized DPM-Solver-2) with the learned `(s_n, c_n)`.
+- Continue until the final sample is reached.
+state_variables_and_history=Current sample; learned AMED predictor `g_phi`; intermediate time `s_n`; scaling factor `c_n`; optional teacher trajectory during training; optional base-solver history for plugin mode.
+nfe_accounting=The deployed solver can preserve the NFE budget of the wrapped ODE solver, but the method fundamentally depends on a trained predictor obtained by distillation against teacher trajectories.
+portability=partial
+repo_transfer_hypothesis=The faithful learned AMED plugin is out of scope, but the paper leaves one portable residue: if the local update direction is what matters, a deterministic norm-preserving mean direction inside the span of recent real drifts could be tested on a single late step without any learned predictor.
+failure_or_reject_boundary=Reject any direct AMED branch that introduces a trained predictor for `s_n` or `c_n`, teacher-generated trajectory assets, or global low-NFE-path changes. The only in-bounds transfer is a tiny deterministic mean-direction heuristic on the paper-targeted late step.
+citation_followups=DPM-Solver-2; Heun; EDM; DEIS; distillation-based fast samplers
+status=ready
+
+## Paper Entry
+
+paper_id=sa_solver_2025
+title=SA-Solver: Stochastic Adams Solver for Fast Sampling of Diffusion Models
+authors=Shuchen Xue; Mingyang Yi; Weijian Luo; Shifeng Zhang; Jiacheng Sun; Zhenguo Li; Zhi-Ming Ma
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2309.05019
+pdf_path=literature/pdfs/sa_solver_2309.05019.pdf
+family=variance-controlled stochastic Adams solver for diffusion SDEs
+why_relevant=This newly added paper is a useful reject boundary for the current repo because it shows a different route to few-step quality through controlled stochasticity and Adams-style SDE integration rather than through deterministic PF-ODE updates.
+core_claim=By solving a family of variance-controlled diffusion SDEs with a stochastic Adams integrator, one can obtain higher-quality or more diverse samples than ODE samplers under suitable NFEs, including strong FID at moderate step counts.
+assumptions=Sampling is allowed to inject controlled noise through a time-varying `tau(t)`; the solver is free to operate on the diffusion SDE rather than the deterministic PF-ODE; the model is expressed in data-prediction form for the solver derivation.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model in data-prediction form; reverse schedule `{t_i}`; noise-scale function `tau(t)` defining the chosen diffusion SDE from the shared marginal family.
+- Rewrite the sampling dynamics as a variance-controlled diffusion SDE with drift and diffusion terms determined by `tau(t)`.
+- Change variables to the log-SNR coordinate and derive the exponentially weighted stochastic integral.
+- Maintain an Adams-style history of previous model evaluations in the transformed coordinates.
+- For each reverse step:
+- Combine the deterministic Adams predictor term from recent history.
+- Add the analytically derived stochastic variance term corresponding to `tau(t)`.
+- Advance the sample to the next time point and continue until the final sample is produced.
+state_variables_and_history=Current sample; previous transformed drifts or data-prediction evaluations; stochastic noise increments; chosen `tau(t)` schedule; Adams history buffer.
+nfe_accounting=The method can be efficient in NFE, but it changes the sampling problem from deterministic PF-ODE integration to stochastic SDE integration with injected noise.
+portability=partial
+repo_transfer_hypothesis=The only useful lesson here is negative: controlled stochasticity can help at few steps, but this repo's authoritative paper path is deterministic and should not be confounded with an SDE-family change while chasing a simple poster mechanism.
+failure_or_reject_boundary=Reject any SA-Solver-like branch that adds stochastic noise, depends on a learned or hand-tuned `tau(t)` noise law, or changes the deterministic paper path into an SDE benchmark.
+citation_followups=DPM-Solver++; UniPC; stochastic Adams methods; diffusion SDE versus ODE comparisons
+status=ready
+
+## Session Takeaway
+
+- `AMED-Solver` opens a more interesting deterministic family than the just-closed springboard branch: the paper's real geometric residue is not the learned plugin itself, but the idea that the useful late-step update may be a norm-preserving mean direction inside the recent local drift plane.
+- `SA-Solver` is a clear boundary for this repo: stochastic Adams improvements change the sampling problem itself, so they are not the next clean mechanism under the deterministic paper protocol.
+- The new orthogonal probe should therefore stay deterministic, keep the `e2379ec` paper base intact everywhere except the single `{steps_left=5}` approach step, and test a tiny AMED-style mean-direction heuristic rather than another state springboard or schedule warp.
+
+## Candidate Card
+
+family=localized_amed_mean_direction
+kind=mechanism
+external_anchor=Fast ODE-based Sampling for Diffusion Models in Around 5 Steps (Zhou et al., 2024)
+borrowed_mechanism=replace the late predictor update direction with a deterministic norm-preserving mean direction built from the local drift plane, approximating the paper's learned mean-direction idea without any trained predictor
+synthesis_step=from the exact `e2379ec` paper base, disable the STORK virtual-drift branch on the single `{steps_left=5}` approach step and instead set `predictor_d` to the norm-preserving bisector of `prev_d_cur` and `d_cur`, using the current drift norm and the normalized sum direction; keep the `{4}` midpoint entry step, `{3}` UniPC corrector, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=e2379ec
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the usual dormant band because the branch is inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the remaining full-step error may lie in the predictor direction rather than the predictor state; a norm-preserving local mean direction could approximate AMED's learned mean-direction benefit on the one late approach step without learned coefficients or extra evaluations
+expected_signature=the proxy frontier should remain in the stable dormant band; if promoted, paper block 0 should stay near or improve on the `e2379ec` base `1.92366`, while a clear proxy loss would reject the mean-direction family quickly
+ablation=if this family shows life, compare the same `{5}` placement using the accepted previous slope `prev_d_prime` in the mean-direction span instead of `prev_d_cur`
+kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 loss that clearly trails the `e2379ec` base
