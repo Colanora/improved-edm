@@ -1419,3 +1419,134 @@ hypothesis=if the STORK-style virtual-stage effect is really correcting late-ste
 expected_signature=the proxy frontier should remain in the usual stable band; if promoted, the paper row should stay near or beat `e2379ec`, while a clear loss would identify `{5}` as the active placement
 ablation=this is the natural placement follow-up after the paper win; if it weakens, treat the current `{5}`-only branch as the minimal defensible family and stop widening this mechanism
 kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 result that clearly trails the `e2379ec` base
+
+## Session Addendum
+
+Session date: 2026-03-15
+Working paper base after widened STORK miss: `e2379ec`
+Reason for new pass: the same-family STORK widening ablation weakened already on the 5k proxy, so `program.md` now wants the next branch to pair incumbent consolidation with an orthogonal literature-grounded family rather than more window widening.
+
+## Paper Entry
+
+paper_id=bns_2024
+title=Bespoke Non-Stationary Solvers for Fast Sampling of Diffusion and Flow Models
+authors=Neta Shaul; Uriel Singer; Ricky T. Q. Chen; Matthew Le; Ali Thabet; Albert Pumarola; Yaron Lipman
+venue_or_source=arXiv
+year=2024
+url=https://arxiv.org/abs/2403.01329
+pdf_path=literature/pdfs/bns_2403.01329.pdf
+family=solver distillation over a bespoke non-stationary linear multistep family
+why_relevant=This newly added paper is a strong fresh reference for the general "step-specific coefficients matter" thesis, and it is useful here mainly as a clean reject boundary because it achieves that flexibility through offline optimization over a large non-stationary solver family.
+core_claim=A model-specific non-stationary solver family that subsumes common RK and multistep samplers can be optimized with a tiny parameter set against high-accuracy target trajectories, substantially improving low-NFE sampling without retraining the backbone.
+assumptions=One has access to high-accuracy target trajectories or outputs; the sampler coefficients and timesteps may be optimized offline for the specific pretrained model; the solver may use arbitrary linear combinations of past states and velocities.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion or flow velocity field `u_t`; N-step non-stationary solver parameters `theta = {T_n, (a_i, b_i)}`; initial noise sample `x_0`.
+- Offline optimization stage:
+- Sample many initial noises `x_0`.
+- For each noise sample, generate a high-accuracy target output `x(1)` using a strong adaptive solver or dense teacher trajectory.
+- Run the candidate non-stationary solver:
+- Initialize an empty velocity matrix `U_{-1}`.
+- For each step `i = 0 .. n-1`:
+- Evaluate the model velocity at the current state and current step time.
+- Append the new velocity to the history matrix `U_i`.
+- Update the state with the non-stationary affine rule `x_{i+1} = x_0 * a_i + U_i * b_i`.
+- After the final step, compare the produced sample to the high-accuracy target and optimize `theta` over the dataset.
+- Inference stage:
+- Freeze the learned `theta`.
+- Re-run the same history-accumulating update for a fresh `x_0` and return the final sample.
+state_variables_and_history=Initial noise `x_0`; current sample; full matrix of past velocities `U_i`; optimized per-step affine coefficients `a_i, b_i`; optimized timestep grid `T_n`.
+nfe_accounting=Sampling-time NFE matches the chosen solver length, but the method fundamentally depends on an offline optimization stage and stored model-specific coefficients.
+portability=incompatible
+repo_transfer_hypothesis=The portable lesson is only conceptual: late-step coefficients can want model-specific, non-stationary behavior. A faithful BNS transfer is out of scope because this repo forbids offline solver optimization and stored learned coefficients.
+failure_or_reject_boundary=Reject any direct BNS-like branch that learns or searches per-step coefficients, uses teacher targets, or turns `sample.py` into a model-specific distilled solver table.
+citation_followups=ST transformations; DPM-Solver; Progressive Distillation; solver distillation papers
+status=ready
+
+## Paper Entry
+
+paper_id=diff_solver_search_2025
+title=Differentiable Solver Search for Fast Diffusion Sampling
+authors=Shuai Wang; Zexian Li; Qipeng Zhang; Tianhui Song; Xubin Li; Tiezheng Ge; Bo Zheng; Limin Wang
+venue_or_source=ICML 2025 / PMLR
+year=2025
+url=https://arxiv.org/abs/2505.21114
+pdf_path=literature/pdfs/diff_solver_search_2505.21114.pdf
+family=differentiable search over timesteps and solver coefficients
+why_relevant=This newly added 2025 paper is useful because it squarely targets the same few-step diffusion-ODE regime as this repo, but reaches its gains through data-driven search over coefficients and timesteps rather than through a hand-designed training-free update.
+core_claim=Classical Adams-style interpolation structure is suboptimal for diffusion models; if one reduces the solver design space to step locations plus a compact set of coefficients, those quantities can be optimized differentiably to produce stronger few-step samplers for both DDPM and rectified-flow models.
+assumptions=The solver coefficients and timesteps may be searched offline against model outputs; one can optimize a compact parameter space with gradient-based search; the resulting searched solver is model- and schedule-specific.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model; parameterized N-step solver with step locations and coefficient table; optimization dataset of prompts or latent noises.
+- Define a compact search space containing:
+- the timestep grid for the target NFE budget,
+- and a small coefficient vector for each update rule in the multistep solver.
+- For each optimization iteration:
+- Sample a batch of latent noises or prompts.
+- Run the current candidate solver on the pretrained model to produce final samples.
+- Evaluate the resulting objective used by the paper's differentiable search procedure and backpropagate through the sampling path into the solver parameters.
+- Update both timesteps and solver coefficients.
+- After convergence, freeze the searched parameters.
+- Inference stage:
+- Run the frozen searched solver exactly as a normal few-step sampler using the optimized timestep grid and coefficient table.
+state_variables_and_history=Current sample; cached multistep velocities; searched timestep vector; searched coefficient tables; optimization objective state during search.
+nfe_accounting=Inference-time NFE is fixed after the search, but the method depends on offline differentiable optimization of solver parameters.
+portability=incompatible
+repo_transfer_hypothesis=The main portable takeaway is negative: there is real headroom in step-specific coefficients, but this repo should approximate that only through simple deterministic local signals, not through offline solver search.
+failure_or_reject_boundary=Reject any branch that introduces searched coefficient tables, searched timestep laws, or optimization loops outside `sample.py`; those are outside the fixed-pretrained research contract.
+citation_followups=DPM-Solver++; UniPC; BNS; schedule-search papers; Adams-like multistep methods
+status=ready
+
+## Paper Entry
+
+paper_id=consistency_solver_2025
+title=Image Diffusion Preview with Consistency Solver
+authors=Fu-Yun Wang; Hao Zhou; Liangzhe Yuan; Sanghyun Woo; Boqing Gong; Bohyung Han; Ming-Hsuan Yang; Han Zhang; Yukun Zhu; Ting Liu; Long Zhao
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2512.13592
+pdf_path=literature/pdfs/consistency_solver_2512.13592.pdf
+family=RL-trained general-linear multistep preview solver
+why_relevant=This newly added paper is another sharp boundary case for few-step solver research. It is especially relevant because it learns a generalized high-order solver for deterministic PF-ODE preview consistency, which superficially resembles the repo's paper-path goal but relies on optimization machinery that the repo forbids.
+core_claim=A lightweight solver parameterization derived from general linear multistep methods can be optimized with reinforcement learning so that few-step preview samples stay visually and semantically consistent with a full-step target trajectory.
+assumptions=One may compare few-step previews to full-step target samples; solver weights are trainable; reinforcement learning or related optimization machinery is available; preview-target similarity rewards can be computed from auxiliary perceptual features.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model; trainable solver policy `Psi_theta`; full-step reference solver `Psi`; prompt or conditioning `c`; initial noise `z`.
+- For each training iteration:
+- Sample a prompt and initial noise.
+- Generate a target image `x_gt` by running the full-step deterministic solver on the fixed pretrained model.
+- Run the few-step trainable solver policy on the same prompt and noise to get a preview image `x_p`.
+- Compute a similarity reward between preview and target using perceptual or structural feature metrics.
+- Update the solver policy parameters with PPO or another RL optimizer.
+- Inference stage:
+- Freeze the learned solver policy.
+- Run the few-step trainable solver to generate previews or final few-step outputs.
+state_variables_and_history=Current sample; trainable solver-weight network; few-step history states required by the generalized multistep formula; reward features; PPO optimization state.
+nfe_accounting=Inference-time NFE can stay low, but the method depends on a full offline RL optimization stage and auxiliary reward computation.
+portability=incompatible
+repo_transfer_hypothesis=The only portable lesson is that consistency with a strong full-step target is a meaningful objective. The actual solver mechanism is out of scope because it requires learned weights, reward engineering, and RL optimization.
+failure_or_reject_boundary=Reject any direct ConsistencySolver-like branch that learns solver coefficients against preview-target rewards or needs auxiliary perceptual features, because that would violate the frozen-model, `sample.py`-only protocol.
+citation_followups=general linear multistep methods; DPM-Solver; distillation and consistency-model papers; RL-for-solver optimization
+status=ready
+
+## Session Takeaway
+
+- The three fresh papers reinforce the same hard boundary from different angles: BNS, differentiable solver search, and ConsistencySolver all improve few-step sampling by learning or searching step-specific solver parameters, which is real evidence that coefficient placement matters, but it is out of scope for this repo.
+- Re-reading `PFDiff` and `FSampler` after the STORK widening miss sharpens a different portable residue: cached past information can still help even without learned coefficients if it is used to reposition a single late predictor state, not to skip calls, learn schedules, or globally rewrite the solver.
+- `PFDiff` is especially instructive for higher-order solvers because, once the solver order is above 1, the paper drops the future-score anticipation and keeps only the past-score springboard. That is exactly the part that can be localized into this repo.
+- With `e2379ec` now established as both the paper winner and the minimal STORK placement, the next orthogonal probe should keep the `{4}` midpoint plus `{3}` UniPC tail unchanged and replace the `{5}` virtual-drift construction with a past-score springboard at the predictor state.
+
+## Candidate Card
+
+family=localized_pfdiff_springboard_predictor
+kind=mechanism
+external_anchor=PFDiff: Training-Free Acceleration of Diffusion Models Combining Past and Future Scores (Wang et al., 2025); FSampler: Training-Free Acceleration of Diffusion Sampling via Epsilon Extrapolation (Vladimir, 2025)
+borrowed_mechanism=use cached past denoising information to create a guarded one-step springboard state before the next real predictor evaluation, while keeping the full NFE budget and the downstream solver structure unchanged
+synthesis_step=from the exact `e2379ec` paper base, disable the STORK virtual-drift branch on the single `{steps_left=5}` approach step and instead set the predictor-state evaluation point to a PFDiff-style springboard `x_spring = x_hat + alpha * h * prev_d_prime`, reusing the previous accepted slope as the past-score guide; keep the `{4}` midpoint entry step, `{3}` UniPC corrector, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=e2379ec
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain inside the stable dormant band because the branch is inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the remaining full-step error may be predictor-state placement rather than predictor-slope extrapolation; a single past-score springboard could feed the winning midpoint-plus-UniPC tail with a better entering state without widening the STORK residue or touching the low-NFE frontier
+expected_signature=the proxy frontier should remain in the usual stable band; if promoted, paper block 0 should stay near or improve on the `e2379ec` base `1.92366`, while a clear loss would reject the springboard-state family as less portable than the virtual-drift family
+ablation=if this family shows life, compare the same `{5}` placement using `prev_d_cur` instead of `prev_d_prime` so we can separate accepted-slope springboarding from raw-drift reuse
+kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 loss that clearly trails the `e2379ec` base

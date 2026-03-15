@@ -21,7 +21,8 @@ RESEARCH_STANDARD_TERMINAL_HEUN_STAGES = 2
 RESEARCH_STANDARD_TERMINAL_EXACT_HEUN_STAGES = 2
 RESEARCH_STANDARD_LOCAL_UNIPC_STEPS_LEFT = (3, 4)
 RESEARCH_STANDARD_LOCAL_DPM_SOLVER_STEPS_LEFT = (4,)
-RESEARCH_STANDARD_LOCAL_VIRTUAL_PREDICTOR_STEPS_LEFT = (5,)
+RESEARCH_STANDARD_LOCAL_VIRTUAL_PREDICTOR_STEPS_LEFT = ()
+RESEARCH_STANDARD_LOCAL_PAST_SPRINGBOARD_STEPS_LEFT = (5,)
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
 
@@ -154,6 +155,18 @@ def research_step_local_virtual_predictor(num_steps: int, device: torch.device) 
     return step_local_virtual_predictor
 
 
+def research_step_local_past_springboard(num_steps: int, device: torch.device) -> torch.Tensor:
+    step_local_past_springboard = torch.zeros(num_steps, dtype=torch.bool, device=device)
+    if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
+        return step_local_past_springboard
+    terminal_end = num_steps - 1
+    for steps_left in RESEARCH_STANDARD_LOCAL_PAST_SPRINGBOARD_STEPS_LEFT:
+        step_index = terminal_end - steps_left
+        if 0 <= step_index < terminal_end:
+            step_local_past_springboard[step_index] = True
+    return step_local_past_springboard
+
+
 def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) -> torch.Tensor:
     d_norm = d_cur.flatten(1).norm(dim=1)
     prev_norm = prev_d_cur.flatten(1).norm(dim=1)
@@ -216,6 +229,7 @@ def research_sampler(
     step_local_unipc_corrector = research_step_local_unipc_corrector(num_steps, latents.device)
     step_local_dpm_solver_midpoint = research_step_local_dpm_solver_midpoint(num_steps, latents.device)
     step_local_virtual_predictor = research_step_local_virtual_predictor(num_steps, latents.device)
+    step_local_past_springboard = research_step_local_past_springboard(num_steps, latents.device)
     step_correction_relax = research_step_correction_relax(num_steps, latents.device)
     prev_d_cur = None
     prev_d_prime = None
@@ -256,6 +270,7 @@ def research_sampler(
         memory_flat = torch.zeros_like(alpha_flat)
         relax_flat = torch.zeros_like(alpha_flat)
         local_unipc = False
+        local_past_springboard = bool(step_local_past_springboard[i]) and prev_d_prime is not None
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
             if bool(step_local_virtual_predictor[i]) and prev_h is not None:
@@ -279,7 +294,10 @@ def research_sampler(
                 memory_flat = torch.zeros_like(memory_flat)
                 relax_flat = torch.zeros_like(relax_flat)
         alpha = alpha_flat.view(-1, *([1] * (d_cur.ndim - 1)))
-        x_prime = x_hat + alpha * h * predictor_d
+        if local_past_springboard:
+            x_prime = x_hat + alpha * h * prev_d_prime
+        else:
+            x_prime = x_hat + alpha * h * predictor_d
         t_prime_input = t_hat + alpha_flat * h
         denoised = net(x_prime, t_prime_input, class_labels).to(torch.float64)
         t_prime = t_prime_input.view(-1, *([1] * (d_cur.ndim - 1)))
