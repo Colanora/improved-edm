@@ -1554,6 +1554,144 @@ kill_condition=any low-NFE drift outside the stable band, any instability, or an
 ## Session Addendum
 
 Session date: 2026-03-15
+Working paper base after adaptive-allocation closeout: `e2379ec`
+Reason for new pass: the orthogonal adaptive-allocation family lost cleanly on proxy, so `program.md` requires a fresh 3-paper external literature rotation before another family change.
+Fresh externally discovered anchors for this pass: `S4S` (`arXiv:2502.17423`), `TADA` (`arXiv:2506.21757`), and `A-FloPS` (`arXiv:2509.00036`).
+
+## Paper Entry
+
+paper_id=s4s_2025
+title=S4S: Solving for a Diffusion Model Solver
+authors=Eric Frankel; Sitan Chen; Jerry Li; Pang Wei Koh; Lillian J. Ratliff; Sewoong Oh
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2502.17423
+pdf_path=literature/pdfs/s4s_2502.17423.pdf
+family=learned solver-coefficient optimization and joint schedule optimization
+why_relevant=This paper is a strong fresh boundary for the current repo because it argues that few-step diffusion sampling should optimize the overall solver directly rather than cling to textbook local-error coefficients, but it does so through an offline learned coefficient search that the repo cannot faithfully adopt.
+core_claim=In the very low-NFE regime, standard ODE-solver invariants stop being the right target; directly learning time-dependent solver coefficients against a strong teacher solver gives a much better student sampler, and alternating coefficient-plus-schedule optimization works even better.
+assumptions=A teacher solver with many NFEs is available; offline optimization over solver coefficients and optionally time steps is allowed; a relaxed training objective can perturb initial latents within a bounded ball during optimization.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model; teacher solver `Psi*`; student solver family `Psi_phi` with learnable time-dependent coefficients; fixed or learnable discretization schedule `{t_i}`; distance metric `d`; relaxation radius `r`.
+- Build an offline dataset of teacher trajectories by drawing `x_T ~ N(0, sigma_T^2 I)` and storing `Psi*(x_T)` as the target end sample.
+- Choose a solver family:
+- LMS form: express each step update `x_i = linear_transport(x_{i-1}) - nonlinear_increment(Delta_i(phi))`, where `Delta_i(phi)` is a learned combination of recent model evaluations.
+- Single-step form: express each step using learned intermediate evaluations and learned synthesis coefficients.
+- Predictor-corrector form: learn coefficients for both predictor and correction synthesis.
+- S4S coefficient optimization loop:
+- Sample `(x'_T, x_T, Psi*(x_T))` from the offline set, initialized with `x'_T = x_T`.
+- Run the student solver `Psi_phi(x'_T)` on the chosen low-NFE schedule.
+- Minimize `d(Psi_phi(x'_T), Psi*(x_T))` while constraining `x'_T` to stay inside an `L2` ball of radius `r * sigma_T` around `x_T`.
+- Update both the solver coefficients `phi` and the relaxed latent `x'_T`; project `x'_T` back into the ball if needed.
+- Repeat until coefficient convergence.
+- Optional S4S-Alt loop:
+- Alternate between coefficient updates with schedule fixed and schedule updates with coefficients fixed, always using the same relaxed objective against the teacher end sample.
+- Inference after training:
+- Freeze the learned coefficients (and optional learned schedule) and run the resulting low-NFE solver normally from a fresh Gaussian latent to the final sample.
+state_variables_and_history=Current sample; previous solver evaluations for LMS or PC variants; per-step learned coefficient tables; offline teacher outputs; relaxed latents used during coefficient search.
+nfe_accounting=Inference NFE can match the chosen student solver, but obtaining the coefficients requires an offline optimization loop plus repeated teacher-solver calls that are outside the repo's inference-only protocol.
+portability=partial
+repo_transfer_hypothesis=The faithful S4S pipeline is out of scope, but it sharpens a useful lesson: if few-step quality depends on solver-specific residual structure rather than textbook coefficients, the repo should look for tiny direct, inference-time structural decompositions of the existing winner instead of more scalar retuning.
+failure_or_reject_boundary=Reject any branch that introduces an offline optimization stage, learned coefficient tables, a stored teacher latent set, or schedule training. Only a hand-crafted direct residue inspired by the solver-design lesson is in bounds.
+citation_followups=LD3; BNS; DPM-Solver++; UniPC; GITS; DMN
+status=ready
+
+## Paper Entry
+
+paper_id=tada_2025
+title=TADA: Improved Diffusion Sampling with Training-free Augmented DynAmics
+authors=Tianrong Chen; Huangjie Zheng; David Berthelot; Jiatao Gu; Josh Susskind; Shuangfei Zhai
+venue_or_source=NeurIPS 2025 / arXiv
+year=2025
+url=https://arxiv.org/abs/2506.21757
+pdf_path=literature/pdfs/tada_2506.21757.pdf
+family=training-free momentum / augmented-state diffusion dynamics
+why_relevant=This is a fresh direct look at augmented dynamics: it keeps a pretrained diffusion model fixed, but changes the state evolution by lifting the ODE into a small momentum system and letting only a weighted linear combination of the augmented variables touch the network.
+core_claim=A pretrained conventional diffusion model can be reused inside a momentum-style augmented ODE because the training objective is equivalent after a linear reweighting of the augmented state; the augmented dynamics inject useful pseudo-noise and can improve few-step quality without retraining.
+assumptions=Sampling may evolve an augmented state `x_t in (R^d)^N`; one may analytically compute the augmented mean and covariance to obtain a time-dependent reweighting `r_t`; the final sample is recovered from the weighted combination passed through the pretrained `x_theta` predictor.
+complete_sampling_pseudocode=
+- Inputs: pretrained diffusion model `x_theta`; discretized times `{t_i}`; augmented-state dimension `N`; analytic augmented linear dynamics matrices `A_t`, `b_t`; transition kernel `Phi(t, s)`; optional multistep solver cache `Q`.
+- Initialize the augmented latent `x_{t_0} ~ N(0, Sigma_{t_0})` in `N` coupled variables.
+- For each step `i = 0 .. T-1`:
+- Compute the augmented mean `mu_{t_i}` and covariance `Sigma_{t_i}` and form the reweighting `r_{t_i} = Sigma_{t_i}^{-1} mu_{t_i} / (mu_{t_i}^T Sigma_{t_i}^{-1} mu_{t_i})`.
+- Form the network input as the weighted combination `(r_{t_i}^T ⊗ I_d) x_{t_i}` and query the pretrained model to obtain `x_hat = x_theta((r_{t_i}^T ⊗ I_d) x_{t_i}, t_i)`.
+- Convert the prediction into the augmented force term
+- `F_theta(x_t, t) = N! * x_hat - sum_{n=0}^{N-1} x_t^{(n)} / (n! * (1 - t)^n)` all divided by `(1 - t)^N`.
+- Approximate the nonlinear integral `Psi_{t_i} ≈ ∫ Phi(t_{i+1}, tau) b_tau F_theta(x_tau, tau) d tau` with an existing ODE solver; if the solver is multistep, update the cache `Q` with the latest model prediction.
+- Advance the augmented state by `x_{t_{i+1}} = Phi(t_{i+1}, t_i) x_{t_i} + Psi_{t_i}`.
+- After the last step, return `x_theta((r_{t_T}^T ⊗ I_d) x_{t_T}, t_T)` as the sample prediction.
+- Analyze the induced scalar network-input dynamics `y_t = (r_t^T ⊗ I_d) x_t`, which obey a standard drift term plus an extra pseudo-noise term coming from interactions among the augmented variables.
+state_variables_and_history=Augmented state variables `x_t^(0..N-1)`; analytic mean `mu_t`; covariance `Sigma_t`; reweighting vector `r_t`; optional multistep solver cache; final weighted network input `y_t`.
+nfe_accounting=The paper keeps the same model-call budget as the wrapped solver, but it adds extra augmented state variables, analytic transition machinery, and usually an additional stochasticity/detail hyperparameter through the augmented prior covariance.
+portability=partial
+repo_transfer_hypothesis=The full augmented-state system is broader than a clean `sample.py` one-off, but the portable residue is useful: separate a state-aligned linear drift from the late-step innovation before extrapolating, instead of treating the whole drift vector as equally worth carrying forward.
+failure_or_reject_boundary=Reject any branch that requires changing the model interface, carrying a full augmented covariance schedule, or adding a second latent stream throughout the whole trajectory. The only attractive transfer is a tiny local momentum-style decomposition inside the existing late-step mechanism.
+citation_followups=AGM; critically damped Langevin diffusion; exponential integrators; UniPC; DPM-Solver++
+status=ready
+
+## Paper Entry
+
+paper_id=aflops_2026
+title=A-FloPS: Accelerating Diffusion Models via Adaptive Flow Path Sampler
+authors=Cheng Jin; Zhenyu Xiao; Yuantao Gu
+venue_or_source=AAAI 2026 / arXiv
+year=2026
+url=https://arxiv.org/abs/2509.00036
+pdf_path=literature/pdfs/aflops_2509.00036.pdf
+family=flow-path reparameterization with adaptive linear-plus-residual velocity decomposition
+why_relevant=This is the cleanest fresh direct source for a small inference-time decomposition mechanism. Its core adaptive step is local, model-agnostic, training-free, and explicitly designed to improve low-NFE high-order integration by peeling away a state-aligned linear drift before extrapolating the residual.
+core_claim=Diffusion trajectories can be reparameterized into flow-matching form, and high-order few-step integration improves further when the velocity is decomposed each step into an adaptive linear drift `lambda x` plus a residual with reduced temporal variation; the local closed-form `lambda` estimate is enough to recover substantial low-NFE gains.
+assumptions=The sampler can evaluate the current velocity field; consecutive states and velocities are available; one may estimate a piecewise-constant coefficient `lambda^(n)` from local finite differences; no retraining is required.
+complete_sampling_pseudocode=
+- Inputs: pretrained score or equivalent predictor; number of flow steps `N`; diffusion schedule `{sigma_tau, alpha_bar_tau}`; optional high-order integrator state from the previous step.
+- FloPS base trajectory:
+- Sample `x_0 ~ N(0, I)` in flow time.
+- For each flow step `t_n = n / N`:
+- If `t_n` is before the exact diffusion-to-flow mapping becomes valid, reuse the velocity at the earliest valid mapped time `t_min`.
+- Otherwise map the flow time `t_n` to the closest diffusion time `tau` satisfying `t_n ≈ 1 / (1 + sigma_tau / alpha_bar_tau)`.
+- Convert the pretrained diffusion score or prediction into the corresponding flow velocity `v_{t_n}` at the current state.
+- Non-adaptive FloPS update: advance with a simple Euler step `x_{t_{n+1}} = x_{t_n} + v_{t_n} * Delta t`.
+- Adaptive A-FloPS update for steps after the first:
+- Estimate a local coefficient `lambda^(n)` by minimizing residual variation across consecutive steps:
+- `lambda^(n) = <Delta v, Delta x> / ||Delta x||^2`, where `Delta v = v(x_{t_n}, t_n) - v(x_{t_{n-1}}, t_{n-1})` and `Delta x = x_{t_n} - x_{t_{n-1}}`.
+- Define the residual velocity `h(x_t, t; lambda) = v(x_t, t) - lambda x_t`.
+- Treat `lambda` as piecewise constant over the current interval and integrate the linear term exactly:
+- `x_{t_{n+1}} = exp(lambda^(n) Delta t) x_{t_n} + integral exp(lambda^(n) (t_{n+1} - tau)) h(x_tau, tau; lambda^(n)) d tau`.
+- Approximate the residual integral with a second-order Taylor expansion using the current residual and a backward finite-difference estimate of `dh/dt`.
+- Return the terminal flow state as the generated sample.
+state_variables_and_history=Current state; previous state; current velocity; previous velocity; adaptive local coefficient `lambda`; residual velocity `h`; optional high-order finite-difference cache.
+nfe_accounting=The adaptive decomposition itself adds no extra model evaluations beyond the wrapped solver because `lambda` is estimated from consecutive already-computed states and velocities.
+portability=direct
+repo_transfer_hypothesis=The full diffusion-to-flow rewrite is too broad for a single late-step probe, but the adaptive decomposition is directly portable: on the lone `{steps_left=5}` STORK predictor step, estimate a local `lambda` from consecutive states and drifts, subtract the state-aligned linear term `lambda x`, and extrapolate only the residual innovation before reconstructing the predictor drift.
+failure_or_reject_boundary=Reject any branch that rewrites the whole repo around a new flow-time parameterization or that requires wholesale scheduler replacement. The direct in-bounds residue is a localized residualized extrapolation inside the existing paper-winning tail.
+citation_followups=Flow Matching; DPM-Solver++; UniPC; STORK; rectified flow; Diffusion Meets Flow Matching
+status=ready
+
+## Session Takeaway
+
+- `S4S` is a strong negative boundary: learned time-dependent solver coefficients are genuinely useful at very low NFE, but the repo cannot promote an offline teacher-distilled coefficient search as a `sample.py`-only poster mechanism.
+- `TADA` makes the augmented-dynamics lesson sharper without forcing a full momentum rewrite: what transfers cleanly is not another global latent augmentation, but the idea that late-step dynamics contain a large state-aligned linear component plus a smaller innovation term.
+- `A-FloPS` contributes the missing direct formula: estimate a local scalar `lambda` from consecutive state and drift changes, subtract `lambda x`, and extrapolate the residual only. That gives a clean synthesized family which is more structural than another scalar gate yet still lives entirely inside the existing `e2379ec` late-step STORK window.
+
+## Candidate Card
+
+family=localized_residualized_virtual_predictor
+kind=mechanism
+external_anchor=A-FloPS: Accelerating Diffusion Models via Adaptive Flow Path Sampler (Jin et al., 2026); TADA: Improved Diffusion Sampling with Training-free Augmented DynAmics (Chen et al., 2025)
+borrowed_mechanism=estimate a local state-aligned linear drift and extrapolate only the residual innovation, instead of extrapolating the whole late-step drift vector
+synthesis_step=from the exact `e2379ec` paper base, keep the single `{steps_left=5}` STORK virtual-predictor placement but replace the raw history difference `(d_cur - prev_d_cur)` with a residualized difference `[(d_cur - lambda * x_hat) - (prev_d_cur - lambda * prev_x_hat)]`, where `lambda = <d_cur - prev_d_cur, x_hat - prev_x_hat> / ||x_hat - prev_x_hat||^2` is estimated per sample and clamped for stability; keep the `{4}` midpoint entry step, `{3}` UniPC corrector, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=e2379ec
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the usual dormant band because the residualized branch is inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the paper-winning STORK virtual predictor may still be carrying too much of the late PF-ODE radial contraction term; subtracting a locally estimated state-aligned linear drift before extrapolation should isolate the true innovation and yield a cleaner predictor state on the single approach step
+expected_signature=the proxy frontier should at least recover the dormant-band behavior of the base while improving the late full-step read; if the decomposition is right, `NFE=5` should stop softening versus the base and block-0 paper quality should remain near `1.92366` or better
+ablation=if this shows life, test the same residualized virtual predictor with `prev_d_prime` instead of `prev_d_cur` as the previous-velocity term to separate residualization from raw-drift history choice
+kill_condition=any clear proxy loss versus `e2379ec`, any low-NFE drift outside the normal dormant band, or any instability from the local `lambda` estimate
+
+## Session Addendum
+
+Session date: 2026-03-15
 Working paper base after AMED reject: `e2379ec`
 Reason for new pass: the AMED-style mean-direction family missed clearly on the proxy screen, so the next step needs a fresh literature pass before either another orthogonal family or a cleaner consolidation probe on the winning STORK mechanism.
 

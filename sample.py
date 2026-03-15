@@ -161,6 +161,21 @@ def research_alpha_growth_gate(d_cur: torch.Tensor, prev_d_cur: torch.Tensor) ->
     return ratio.sqrt()
 
 
+def research_local_residual_lambda(
+    d_cur: torch.Tensor,
+    prev_d_cur: torch.Tensor,
+    x_cur: torch.Tensor,
+    prev_x_cur: torch.Tensor,
+    t_cur: torch.Tensor,
+) -> torch.Tensor:
+    delta_d = (d_cur - prev_d_cur).flatten(1)
+    delta_x = (x_cur - prev_x_cur).flatten(1)
+    denom = delta_x.square().sum(dim=1).clamp_min(1e-12)
+    lambda_flat = (delta_d * delta_x).sum(dim=1) / denom
+    lambda_bound = float(t_cur.reciprocal().item())
+    return lambda_flat.clamp(-lambda_bound, lambda_bound)
+
+
 def research_step_alpha(num_steps: int, device: torch.device) -> torch.Tensor:
     step_fraction = research_step_fractions(num_steps, device)
     if num_steps < RESEARCH_STANDARD_STEP_THRESHOLD:
@@ -220,6 +235,7 @@ def research_sampler(
     prev_d_cur = None
     prev_d_prime = None
     prev_h = None
+    prev_x_hat = None
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -248,6 +264,7 @@ def research_sampler(
             prev_d_cur = d_cur.detach()
             prev_d_prime = d_mid.detach()
             prev_h = h.detach()
+            prev_x_hat = x_hat.detach()
             continue
 
         predictor_d = d_cur
@@ -258,9 +275,13 @@ def research_sampler(
         local_unipc = False
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
-            if bool(step_local_virtual_predictor[i]) and prev_h is not None:
+            if bool(step_local_virtual_predictor[i]) and prev_h is not None and prev_x_hat is not None:
                 predictor_step_ratio = (alpha_flat * h / prev_h).to(dtype=torch.float64)
-                predictor_d = d_cur + predictor_step_ratio.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
+                residual_lambda_flat = research_local_residual_lambda(d_cur, prev_d_cur, x_hat, prev_x_hat, t_hat)
+                residual_lambda = residual_lambda_flat.view(-1, *([1] * (d_cur.ndim - 1)))
+                residual_cur = d_cur - residual_lambda * x_hat
+                residual_prev = prev_d_cur - residual_lambda * prev_x_hat
+                predictor_d = d_cur + predictor_step_ratio.view(-1, *([1] * (d_cur.ndim - 1))) * (residual_cur - residual_prev)
             else:
                 predictor_beta_flat = torch.full_like(alpha_flat, float(step_predictor_extrapolation[i]))
                 predictor_beta = predictor_beta_flat.view(-1, *([1] * (d_cur.ndim - 1)))
@@ -298,6 +319,7 @@ def research_sampler(
         prev_d_cur = d_cur.detach()
         prev_d_prime = d_prime.detach()
         prev_h = h.detach()
+        prev_x_hat = x_hat.detach()
 
     return x_next
 
