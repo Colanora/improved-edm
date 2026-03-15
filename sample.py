@@ -275,12 +275,12 @@ def research_sampler(
         local_unipc = False
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
-            if bool(step_local_virtual_predictor[i]) and prev_h is not None and prev_x_hat is not None:
+            if bool(step_local_virtual_predictor[i]) and prev_h is not None and prev_x_hat is not None and prev_d_prime is not None:
                 predictor_step_ratio = (alpha_flat * h / prev_h).to(dtype=torch.float64)
                 residual_lambda_flat = research_local_residual_lambda(d_cur, prev_d_cur, x_hat, prev_x_hat, t_hat)
                 residual_lambda = residual_lambda_flat.view(-1, *([1] * (d_cur.ndim - 1)))
                 residual_cur = d_cur - residual_lambda * x_hat
-                residual_prev = prev_d_cur - residual_lambda * prev_x_hat
+                residual_prev = prev_d_prime - residual_lambda * prev_x_hat
                 predictor_d = d_cur + predictor_step_ratio.view(-1, *([1] * (d_cur.ndim - 1))) * (residual_cur - residual_prev)
             else:
                 predictor_beta_flat = torch.full_like(alpha_flat, float(step_predictor_extrapolation[i]))

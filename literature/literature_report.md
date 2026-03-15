@@ -1689,6 +1689,22 @@ expected_signature=the proxy frontier should at least recover the dormant-band b
 ablation=if this shows life, test the same residualized virtual predictor with `prev_d_prime` instead of `prev_d_cur` as the previous-velocity term to separate residualization from raw-drift history choice
 kill_condition=any clear proxy loss versus `e2379ec`, any low-NFE drift outside the normal dormant band, or any instability from the local `lambda` estimate
 
+## Candidate Card
+
+family=localized_residualized_virtual_predictor
+kind=ablation
+external_anchor=A-FloPS: Accelerating Diffusion Models via Adaptive Flow Path Sampler (Jin et al., 2026); TADA: Improved Diffusion Sampling with Training-free Augmented DynAmics (Chen et al., 2025)
+borrowed_mechanism=keep the local linear-plus-residual decomposition but swap which previous velocity anchors the residual history
+synthesis_step=from commit `e68bac4`, keep the localized `{steps_left=5}` residualized virtual predictor exactly as-is but replace the previous raw drift term in the residual history with the previous accepted slope `prev_d_prime`, i.e. use `[(d_cur - lambda * x_hat) - (prev_d_prime - lambda * prev_x_hat)]` while keeping the same per-sample `lambda` estimate, `{4}` midpoint entry step, `{3}` UniPC corrector, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=e68bac4
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the usual dormant band because only the single late virtual-predictor branch changes
+extra_nfe=0
+hypothesis=the near-tie proxy result suggests the residualization itself is sound, but the raw previous drift may still be slightly stale once the prior step has already been corrected; using the previous accepted slope could preserve the `NFE=9`/`NFE=11` gains while recovering the soft `NFE=5` point
+expected_signature=the frontier score should improve past `2.607519` and ideally match or beat the base `2.607516`; if the family is real, the band should keep the mid-NFE gains without paying the same `NFE=5` penalty
+ablation=if this loses clearly, close the residualized family rather than stacking clamp or weighting tweaks
+kill_condition=any clear frontier regression versus both `e68bac4` and `e2379ec`, any new instability, or any broader low-NFE drift outside the normal dormant band
+
 ## Session Addendum
 
 Session date: 2026-03-15
