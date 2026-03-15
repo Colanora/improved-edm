@@ -24,6 +24,8 @@ RESEARCH_STANDARD_LOCAL_DPM_SOLVER_STEPS_LEFT = (4,)
 RESEARCH_STANDARD_LOCAL_VIRTUAL_PREDICTOR_STEPS_LEFT = (5,)
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
+RESEARCH_STANDARD_ERK_GUIDE_STIFFNESS_THRESHOLD = 0.5
+RESEARCH_STANDARD_ERK_GUIDE_STIFFNESS_SCALE = 0.75
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -183,6 +185,26 @@ def research_local_unipc_corrector_slope(
     )
 
 
+def research_erk_guidance(
+    x_cur: torch.Tensor,
+    d_cur: torch.Tensor,
+    prev_euler_state: torch.Tensor,
+    prev_euler_drift: torch.Tensor,
+    step_size: torch.Tensor,
+) -> torch.Tensor:
+    delta_x = x_cur - prev_euler_state
+    delta_f = d_cur - prev_euler_drift
+    delta_x_norm = delta_x.flatten(1).norm(dim=1).clamp_min(1e-12)
+    delta_f_norm = delta_f.flatten(1).norm(dim=1).clamp_min(1e-12)
+    direction = delta_f / delta_f_norm.view(-1, *([1] * (delta_f.ndim - 1)))
+    stiffness = delta_f_norm / delta_x_norm
+    gate = stiffness > RESEARCH_STANDARD_ERK_GUIDE_STIFFNESS_THRESHOLD
+    z = RESEARCH_STANDARD_ERK_GUIDE_STIFFNESS_SCALE * step_size * stiffness
+    projection = (d_cur * direction).flatten(1).sum(dim=1)
+    guide_scale = gate.to(dtype=d_cur.dtype) * z.square() * projection
+    return guide_scale.view(-1, *([1] * (d_cur.ndim - 1))) * direction
+
+
 def research_sampler(
     net,
     latents,
@@ -220,6 +242,8 @@ def research_sampler(
     prev_d_cur = None
     prev_d_prime = None
     prev_h = None
+    prev_erk_euler_state = None
+    prev_erk_euler_drift = None
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -237,6 +261,8 @@ def research_sampler(
 
         if i == num_steps - 1:
             x_next = x_euler
+            prev_erk_euler_state = None
+            prev_erk_euler_drift = None
             continue
 
         if bool(step_local_dpm_solver_midpoint[i]):
@@ -248,6 +274,8 @@ def research_sampler(
             prev_d_cur = d_cur.detach()
             prev_d_prime = d_mid.detach()
             prev_h = h.detach()
+            prev_erk_euler_state = None
+            prev_erk_euler_drift = None
             continue
 
         predictor_d = d_cur
@@ -295,9 +323,25 @@ def research_sampler(
         x_heun = x_hat + h * corrected_slope
         relax = relax_flat.view(-1, *([1] * (x_heun.ndim - 1)))
         x_next = x_heun + relax * (x_euler - x_heun)
+        if bool(step_terminal_exact_heun[i]) and prev_erk_euler_state is not None and prev_erk_euler_drift is not None:
+            step_size = (t_hat - t_next).to(dtype=torch.float64)
+            erk_guidance = research_erk_guidance(
+                x_cur=x_hat,
+                d_cur=d_cur,
+                prev_euler_state=prev_erk_euler_state,
+                prev_euler_drift=prev_erk_euler_drift,
+                step_size=step_size,
+            )
+            x_next = x_next - step_size * erk_guidance
         prev_d_cur = d_cur.detach()
         prev_d_prime = d_prime.detach()
         prev_h = h.detach()
+        if bool(step_terminal_exact_heun[i]):
+            prev_erk_euler_state = x_euler.detach()
+            prev_erk_euler_drift = d_prime.detach()
+        else:
+            prev_erk_euler_state = None
+            prev_erk_euler_drift = None
 
     return x_next
 

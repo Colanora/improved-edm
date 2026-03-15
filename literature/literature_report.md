@@ -5,10 +5,10 @@ This is the compact top-level index for the hierarchical literature workspace. R
 ## Current Snapshot
 
 - Current working paper base: `e2379ec`
-- Latest literature pass: [`pass_13`](passes/pass_13.md)
-- Latest pass trigger: the trend-consistent virtual-predictor family completed the authoritative paper path on `66d84cb` and lost on all three paper blocks versus `e2379ec`, so the family is closed and the next move must be a literature-guided rotation.
-- Next queued candidate family: `none yet`
-- Current next action: restore the exact `e2379ec` paper base, then run a targeted follow-up search for a still-unused deterministic zero-extra-NFE mechanism that is not another late history-vector tweak or an offline/search-based family.
+- Latest literature pass: [`pass_15`](passes/pass_15.md)
+- Latest pass trigger: the targeted follow-up from [`pass_14`](passes/pass_14.md) found `ERK-Guid` as a fresh direct anchor, and reflection selected a localized terminal exact-Heun adaptation as the next new family.
+- Next queued candidate family: `localized_erk_guided_terminal_heun`
+- Current next action: keep `e2379ec` as the working base and implement the `localized_erk_guided_terminal_heun` candidate described in [`pass_14`](passes/pass_14.md).
 
 ## Workspace Layout
 
@@ -35,6 +35,8 @@ This is the compact top-level index for the hierarchical literature workspace. R
 | `pass_11` | 2026-03-15 | `e2379ec` | 2 | `localized_amed_mean_direction` | [link](passes/pass_11.md) |
 | `pass_12` | 2026-03-15 | `e2379ec` | 2 | `localized_trend_consistent_virtual_predictor` | [link](passes/pass_12.md) |
 | `pass_13` | 2026-03-15 | `e2379ec` | 5 | `none yet` | [link](passes/pass_13.md) |
+| `pass_14` | 2026-03-15 | `e2379ec` | 1 | `localized_erk_guided_terminal_heun` | [link](passes/pass_14.md) |
+| `pass_15` | 2026-03-15 | `e2379ec` | 5 | `localized_erk_guided_terminal_heun` | [link](passes/pass_15.md) |
 
 ## Paper Index
 
@@ -84,9 +86,10 @@ This is the compact top-level index for the hierarchical literature workspace. R
 | `pfode_weak_logconcavity_2025` | `partial` | `ready` | `pass_10` | [link](papers/pfode_weak_logconcavity_2025.md) |
 | `amed_solver_2024` | `partial` | `ready` | `pass_11` | [link](papers/amed_solver_2024.md) |
 | `sa_solver_2025` | `partial` | `ready` | `pass_11` | [link](papers/sa_solver_2025.md) |
+| `erk_guid_2026` | `direct` | `ready` | `pass_14` | [link](papers/erk_guid_2026.md) |
 
 ## Read Order
 
 1. Start here for the current working base and the latest queued candidate.
-2. Open [`pass_13`](passes/pass_13.md) for the latest reflection and immediate next action.
-3. Open only the cited paper notes from `pass_13` when you need full pseudocode or portability details.
+2. Open [`pass_15`](passes/pass_15.md) for the latest reflection and immediate next action.
+3. Open only the cited paper notes from `pass_15` when you need full pseudocode or portability details.
