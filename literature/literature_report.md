@@ -1640,6 +1640,122 @@ expected_signature=the proxy frontier should stay at least as strong as `e2379ec
 ablation=if this shows life, compare the same `{5}` placement using a gated blend of `prev_d_cur` and `prev_d_prime` rather than a hard swap
 kill_condition=any low-NFE drift outside the stable band, any instability, or any proxy loss large enough to show that the accepted-slope history is weaker than the current `e2379ec` history choice
 
+## Session Addendum
+
+Session date: 2026-03-15
+Working paper base after STORK follow-up closeout: `e2379ec`
+Reason for new pass: the accepted-slope STORK consolidation probe also weakened, so the STORK family has exhausted its justified follow-ups and the next branch needs a fresh literature rotation toward a different mechanism family.
+
+## Paper Entry
+
+paper_id=pfode_adaptivity_2025
+title=Adaptivity and Convergence of Probability Flow ODEs in Diffusion Generative Models
+authors=Jiaqi Tang; Yuling Yan
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2501.18863
+pdf_path=literature/pdfs/pfode_adaptivity_2501.18863.pdf
+family=theory of PF-ODE adaptivity to intrinsic low-dimensional structure
+why_relevant=This newly added paper is not a sampler recipe by itself, but it is highly relevant because it formalizes a property that the current repo keeps probing empirically: deterministic PF-ODE samplers can adapt to low-dimensional local structure and should not be judged only by ambient-dimensional intuition.
+core_claim=With accurate score estimation and suitable coefficient design, probability-flow ODE samplers achieve convergence rates that depend on intrinsic rather than ambient dimension, showing that deterministic samplers can exploit low-dimensional structure of the target distribution.
+assumptions=The score function is accurately estimated; the target distribution has intrinsic low-dimensional structure; the sampler follows a deterministic DDIM / probability-flow-ODE-style reverse process with suitable coefficients.
+complete_sampling_pseudocode=
+- Inputs: target data distribution `p_data`; learned score function `s_t`; forward noising schedule `{alpha_t, beta_t}`; total number of deterministic reverse iterations `T`.
+- Define the forward diffusion process and its learned score approximation over the schedule.
+- Initialize the reverse process at Gaussian noise `Y_T`.
+- For each reverse step `t = T ... 1`:
+- Apply the deterministic probability-flow-ODE update `Y_{t-1} = alpha_t^{-1/2} * (Y_t + eta_t * s_t(Y_t))`, with the DDIM-style coefficient choice `eta_t`.
+- Continue until `Y_0` is produced.
+- Analyze convergence by bounding the total-variation distance between the reverse iterate distribution and the target distribution in terms of intrinsic dimension, score error, and Jacobian error.
+state_variables_and_history=Current deterministic reverse iterate `Y_t`; learned score `s_t`; DDIM-style coefficients `eta_t`; score/Jacobian error quantities in the analysis.
+nfe_accounting=The paper analyzes a deterministic PF-ODE sampler under a fixed iteration budget; it does not propose extra evaluations or a new practical stage structure.
+portability=partial
+repo_transfer_hypothesis=The portable lesson is that a deterministic sampler can benefit from local structure-adaptive behavior without changing the benchmark itself. In this repo, that points toward local per-sample solver allocation rather than another global schedule or stochastic family.
+failure_or_reject_boundary=Reject any use that tries to treat the paper as a concrete new solver formula; it is primarily a theoretical justification for adaptive deterministic behavior, not a drop-in sampler implementation.
+citation_followups=DDIM; PF-ODE theory; intrinsic-dimension analyses; Jacobian-error control papers
+status=ready
+
+## Paper Entry
+
+paper_id=pfode_minimax_2025
+title=Minimax Optimality of the Probability Flow ODE for Diffusion Models
+authors=Changxiao Cai; Gen Li
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2503.09583
+pdf_path=literature/pdfs/pfode_minimax_2503.09583.pdf
+family=end-to-end deterministic PF-ODE theory with smooth score and Jacobian control
+why_relevant=This newly added theory paper is valuable because it reinforces a practical constraint seen in this repo: deterministic ODE samplers care not only about score error but also about the smoothness and Jacobian behavior of the chosen direction field.
+core_claim=Under a smooth regularized score estimator that controls both score and mean Jacobian error, the resulting deterministic probability-flow-ODE sampler can achieve near-minimax total-variation guarantees without strong structural assumptions on the target distribution.
+assumptions=The score estimator is smooth enough that Jacobian error is controlled; the deterministic sampler follows a PF-ODE update; convergence is measured end-to-end rather than only conditionally on an oracle score.
+complete_sampling_pseudocode=
+- Inputs: training data from the target distribution; smooth score estimator `s_t`; deterministic PF-ODE reverse update coefficients.
+- Train or construct a score estimator that controls both `L2` score error and mean Jacobian error.
+- Initialize the reverse process from Gaussian noise.
+- For each reverse step:
+- Apply the deterministic PF-ODE / DDIM-style update using the smooth score estimate at the current iterate.
+- Propagate the deterministic iterate to the final sample.
+- Bound the final sampling error by jointly tracking score-estimation error, Jacobian error, initialization bias, and discretization effects.
+state_variables_and_history=Current deterministic reverse iterate; smooth score estimate; Jacobian of the score estimate; reverse coefficients; initialization and discretization error terms in the analysis.
+nfe_accounting=The paper is theoretical and keeps the deterministic PF-ODE iteration budget fixed; it does not prescribe extra model evaluations.
+portability=partial
+repo_transfer_hypothesis=The useful residue is that deterministic sampler edits should prefer smooth local deformations and adaptive allocations over abrupt branch replacements or stochastic perturbations. That supports trying a smooth local allocation between existing predictor rules rather than inventing a new hard branch.
+failure_or_reject_boundary=Reject any reading that turns this into a training procedure for smooth score estimators; under the repo contract, only the deterministic local-allocation lesson is portable.
+citation_followups=PF-ODE theory; DDIM; Jacobian-aware score estimation; minimax sampling theory
+status=ready
+
+## Paper Entry
+
+paper_id=pfode_weak_logconcavity_2025
+title=Non-asymptotic error bounds for probability flow ODEs under weak log-concavity
+authors=Gitte Kremling; Francesco Iafrate; Mahsa Taheri; Johannes Lederer
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2510.17608
+pdf_path=literature/pdfs/pfode_weak_logconcavity_2510.17608.pdf
+family=non-asymptotic PF-ODE convergence with explicit discretization effects
+why_relevant=This newly added theory paper is useful here because it explicitly tracks discretization error and even discusses exponential-integrator discretization under more realistic distributional assumptions, which connects directly to the repo's step-local mechanism work.
+core_claim=Probability-flow ODE samplers admit explicit non-asymptotic error bounds under weak log-concavity and Lipschitz score assumptions, with initialization, score error, and discretization all visible in the final bound; these rates can guide practical step-size choices and solver design.
+assumptions=The target distribution satisfies weak log-concavity-type assumptions; the score function is Lipschitz; the PF-ODE is discretized, potentially with an exponential-integrator scheme.
+complete_sampling_pseudocode=
+- Inputs: forward SDE coefficients `f(t), g(t)`; learned score function; deterministic PF-ODE discretization parameters; total integration horizon.
+- Define the forward diffusion process and the corresponding reverse probability-flow ODE.
+- Initialize the reverse ODE from a chosen starting distribution near the terminal Gaussian.
+- Discretize the PF-ODE with a selected step size and solver scheme, including exponential-integrator variants covered by the analysis.
+- At each deterministic reverse step:
+- Evaluate the learned score at the current iterate.
+- Advance the sample using the chosen discretized PF-ODE rule.
+- Track initialization, discretization, and score-approximation errors through the theoretical bound.
+state_variables_and_history=Current deterministic reverse iterate; learned score evaluation; step-size / discretization parameters; propagated error terms in the analysis.
+nfe_accounting=The paper does not change model-call accounting; it analyzes how discretization quality affects deterministic PF-ODE sampling under a fixed iteration budget.
+portability=partial
+repo_transfer_hypothesis=The portable residue is that deterministic PF-ODE solver design should expose discretization quality smoothly and locally. That again favors a soft per-sample allocation between two existing predictor rules over another hard step-law rewrite.
+failure_or_reject_boundary=Reject any attempt to turn the paper into a global schedule rewrite or distribution-assumption-dependent benchmark change; the practical transfer is only the preference for smooth local allocation under fixed deterministic NFEs.
+citation_followups=PF-ODE theory; exponential integrators; weak log-concavity analyses; regime-shifting discussions
+status=ready
+
+## Session Takeaway
+
+- The three fresh PF-ODE theory papers all point to the same practical residue: deterministic samplers benefit from local structure-adaptive behavior, but that behavior should be smooth and local rather than a hard global family swap.
+- Together with the existing `sdm_2026` paper entry, the cleanest next family is a per-sample adaptive solver-allocation probe on top of the `e2379ec` paper winner: keep the current STORK virtual predictor available, keep the original extrapolation rule available, and let a local gate decide how much of each to use on the single late `{5}` step.
+- This is meaningfully different from the earlier curvature-gated exact-Heun miss: the new family does not promote a whole step to a different solver, it only allocates between two already-tested predictor directions while leaving the downstream midpoint-plus-UniPC tail untouched.
+
+## Candidate Card
+
+family=localized_adaptive_predictor_allocation
+kind=mechanism
+external_anchor=Formalizing the Sampling Design Space of Diffusion-Based Generative Models via Adaptive Solvers and Wasserstein-Bounded Timesteps (Jo and Choi, 2026); Adaptivity and Convergence of Probability Flow ODEs in Diffusion Generative Models (Tang and Yan, 2025); Minimax Optimality of the Probability Flow ODE for Diffusion Models (Cai and Li, 2025)
+borrowed_mechanism=allocate solver behavior smoothly and locally using a per-sample adaptivity signal instead of committing the whole step to one predictor rule
+synthesis_step=from the exact `e2379ec` paper base, keep the single `{steps_left=5}` STORK virtual predictor placement but replace the hard choice of the virtual predictor with a smooth per-sample blend between the original extrapolation predictor and the STORK virtual predictor, using the existing `growth_gate` to weight the allocation on that step only; keep the `{4}` midpoint entry step, `{3}` UniPC corrector, and terminal exact-Heun pair unchanged
+portability=direct
+base_commit=e2379ec
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the usual dormant band because the blend branch is inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the paper-winning STORK predictor may still be over-applied on some samples, while the original extrapolation remains better on others; a smooth local allocation using the existing `growth_gate` could preserve the structural win while reducing the proxy-side overreach that shows up in the same-family misses
+expected_signature=the proxy frontier should beat the recent STORK follow-up misses and ideally recover to or improve on the `e2379ec` reference `2.607516`; if promoted, paper block 0 should stay near or improve on `1.92366`
+ablation=if this shows life, compare the same allocation using `1 - growth_gate` versus `growth_gate` as the virtual-predictor weight so we can verify the allocation polarity
+kill_condition=any low-NFE drift outside the stable band, any instability, or any clear proxy loss that shows the allocation family is weaker than the hard `e2379ec` winner
+
 ## Candidate Card
 
 family=localized_pfdiff_springboard_predictor
