@@ -1403,3 +1403,19 @@ hypothesis=the current paper base may still lose accuracy on the single standard
 expected_signature=the proxy frontier should stay in the usual stable band; if promoted, paper block 0 should land below `1.92757` or at least beat the recent `abb8a61` paper-side loss convincingly
 ablation=if this family wins, keep the same `{5}` window but fall back to the original predictor extrapolation rule to verify that the gain comes from the virtual-stage construction rather than from another late-branch placement
 kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 loss that clearly trails the `3d0ecd6` base
+
+## Candidate Card
+
+family=localized_stork_virtual_predictor
+kind=tuning
+external_anchor=STORK: Faster Diffusion And Flow Matching Sampling By Resolving Both Stiffness And Structure-Dependence (Tan et al., 2025)
+borrowed_mechanism=apply the same virtual-stage predictor on a slightly wider late approach window to test whether the structural stiffening benefit is truly single-step or shared across the two late approach steps
+synthesis_step=from the new paper base `e2379ec`, widen `RESEARCH_STANDARD_LOCAL_VIRTUAL_PREDICTOR_STEPS_LEFT` from `(5,)` to `(5, 6)` while keeping the virtual-stage formula, the `{4}` midpoint entry step, and the `{3}` UniPC corrector unchanged
+portability=direct
+base_commit=e2379ec
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the dormant band because the branch is still inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=if the STORK-style virtual-stage effect is really correcting late-step stiffness rather than one lucky placement, widening it across both approach steps `{5,6}` could preserve or slightly improve the paper row; if it weakens, the current `{5}`-only placement is the minimal transferable mechanism
+expected_signature=the proxy frontier should remain in the usual stable band; if promoted, the paper row should stay near or beat `e2379ec`, while a clear loss would identify `{5}` as the active placement
+ablation=this is the natural placement follow-up after the paper win; if it weakens, treat the current `{5}`-only branch as the minimal defensible family and stop widening this mechanism
+kill_condition=any low-NFE drift outside the stable band, any instability, or any paper block-0 result that clearly trails the `e2379ec` base
