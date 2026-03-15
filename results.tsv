@@ -175,3 +175,4 @@ e2379ec	research	proxy	2.607516	27.1627	10.5604	8.9765	7.6811	2187.0	keep	locali
 273cf22	research	proxy	2.607542	27.1639	10.5604	8.9766	7.6815	2187.0	keep	accepted-slope STORK predictor sanity screen
 4db3940	research	proxy	2.607555	27.1646	10.5603	8.9765	7.6820	2187.0	keep	adaptive predictor allocation sanity screen
 e68bac4	research	proxy	2.607519	27.1640	10.5598	8.9762	7.6816	2186.8	keep	residualized virtual predictor sanity screen
+ca28f14	research	proxy	2.607547	27.1638	10.5611	8.9759	7.6816	2186.8	keep	accepted-slope residual predictor sanity screen
