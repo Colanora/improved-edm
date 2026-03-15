@@ -28,3 +28,4 @@ f640ee5	research	uncond	18	7	1.9423	1.9839	1.9965	1.9423	1777.7	/data2/bochengli
 5ef8741	research	uncond	18	8	1.9278	1.9674	1.9864	1.9278	1584.0	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
 e56051e	research	uncond	18	8	1.9276	1.9675	1.9861	1.9276	1566.5	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
 e2379ec	research	uncond	18	8	1.9237	1.9642	1.9816	1.9237	1573.5	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
+66d84cb	research	uncond	18	8	1.9261	1.9661	1.9845	1.9261	1572.4	/data2/bochengli/github/improved-edm/assets/checkpoints/edm-cifar10-32x32-uncond-vp.pkl	/data2/bochengli/github/improved-edm/assets/fid_refs/cifar10-32x32.npz
