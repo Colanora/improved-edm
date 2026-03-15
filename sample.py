@@ -24,6 +24,7 @@ RESEARCH_STANDARD_LOCAL_DPM_SOLVER_STEPS_LEFT = (4,)
 RESEARCH_STANDARD_LOCAL_VIRTUAL_PREDICTOR_STEPS_LEFT = (5,)
 RESEARCH_STANDARD_BLEND_START = 0.75
 RESEARCH_STANDARD_MAX_CORRECTION_RELAX = 0.08
+RESEARCH_STANDARD_TREND_SMOOTH = 0.5
 
 
 def research_num_steps_from_nfe(nfe: int) -> int:
@@ -183,6 +184,17 @@ def research_local_unipc_corrector_slope(
     )
 
 
+def research_trend_update(
+    prev_trend: torch.Tensor | None,
+    d_cur: torch.Tensor,
+    prev_d_cur: torch.Tensor,
+) -> torch.Tensor:
+    drift_delta = d_cur - prev_d_cur
+    if prev_trend is None:
+        return drift_delta
+    return (1.0 - RESEARCH_STANDARD_TREND_SMOOTH) * prev_trend + RESEARCH_STANDARD_TREND_SMOOTH * drift_delta
+
+
 def research_sampler(
     net,
     latents,
@@ -220,6 +232,7 @@ def research_sampler(
     prev_d_cur = None
     prev_d_prime = None
     prev_h = None
+    prev_trend = None
 
     x_next = latents.to(torch.float64) * t_steps[0]
     for i, (t_cur, t_next) in enumerate(zip(t_steps[:-1], t_steps[1:])):
@@ -245,6 +258,8 @@ def research_sampler(
             denoised = net(x_mid, lambda_mid_sigma, class_labels).to(torch.float64)
             d_mid = (x_mid - denoised) / lambda_mid_sigma
             x_next = x_hat + h * d_mid
+            if prev_d_cur is not None:
+                prev_trend = research_trend_update(prev_trend, d_cur, prev_d_cur).detach()
             prev_d_cur = d_cur.detach()
             prev_d_prime = d_mid.detach()
             prev_h = h.detach()
@@ -257,10 +272,11 @@ def research_sampler(
         relax_flat = torch.zeros_like(alpha_flat)
         local_unipc = False
         if prev_d_cur is not None:
+            trend_cur = research_trend_update(prev_trend, d_cur, prev_d_cur)
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
             if bool(step_local_virtual_predictor[i]) and prev_h is not None:
                 predictor_step_ratio = (alpha_flat * h / prev_h).to(dtype=torch.float64)
-                predictor_d = d_cur + predictor_step_ratio.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
+                predictor_d = d_cur + predictor_step_ratio.view(-1, *([1] * (d_cur.ndim - 1))) * trend_cur
             else:
                 predictor_beta_flat = torch.full_like(alpha_flat, float(step_predictor_extrapolation[i]))
                 predictor_beta = predictor_beta_flat.view(-1, *([1] * (d_cur.ndim - 1)))
@@ -295,6 +311,8 @@ def research_sampler(
         x_heun = x_hat + h * corrected_slope
         relax = relax_flat.view(-1, *([1] * (x_heun.ndim - 1)))
         x_next = x_heun + relax * (x_euler - x_heun)
+        if prev_d_cur is not None:
+            prev_trend = trend_cur.detach()
         prev_d_cur = d_cur.detach()
         prev_d_prime = d_prime.detach()
         prev_h = h.detach()

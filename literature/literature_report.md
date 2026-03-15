@@ -1554,6 +1554,145 @@ kill_condition=any low-NFE drift outside the stable band, any instability, or an
 ## Session Addendum
 
 Session date: 2026-03-15
+Working paper base after residualized-family closeout: `e2379ec`
+Reason for new pass: the localized residualized virtual-predictor family spent its justified follow-up and closed with a clear proxy loss on `ca28f14`, so `program.md` requires another fresh external literature rotation before the next family.
+Fresh externally discovered anchors for this pass: `TAP` (`arXiv:2603.03792`), `ETC` (`arXiv:2510.24129`), and `SADA` (`arXiv:2507.17135`).
+
+## Paper Entry
+
+paper_id=tap_2026
+title=TAP: A Token-Adaptive Predictor Framework for Training-Free Diffusion Acceleration
+authors=Haowei Zhu; Tingxuan Huang; Xing Wang; Tianyu Zhao; Jiexi Wang; Weifeng Chen; Xurui Peng; Fangmin Chen; Junhai Yong; Bin Wang
+venue_or_source=arXiv
+year=2026
+url=https://arxiv.org/abs/2603.03792
+pdf_path=literature/pdfs/tap_2603.03792.pdf
+family=token-adaptive predictor selection for cached internal features
+why_relevant=This is a fresh architectural boundary paper for adaptive predictor selection. It is useful because it isolates a real mechanism idea, namely choosing among a small family of temporal predictors using a low-cost proxy, while also making clear why a faithful reproduction is out of scope for this repo.
+core_claim=Different tokens and timesteps prefer different predictors, so a single global Taylor-style predictor is suboptimal; using a first-layer probe to score multiple candidate predictors and assign the best one per token preserves quality while accelerating cached diffusion inference.
+assumptions=The denoiser exposes internal token features and the first-layer modulated input; cached first-layer activations and output residuals are available; one may skip full downstream computation for selected tokens and replace it with feature predictions.
+complete_sampling_pseudocode=
+- Inputs: denoiser `f_theta`; predictor family `P`; cache window `N`; distance metric `d`.
+- At the beginning of each `N`-step window:
+- Run one full denoising pass for the current timestep.
+- Cache the first-layer modulated input `h_t = Modulate(Norm1(x_t), s_t, g_t)` and the global residual `r_t = f_theta(x_t, t) - x_t`.
+- On each skipped step inside the window:
+- For every candidate predictor `p in P`, predict the cached modulated input `h_hat_{t,p}` from prior cached features using a Taylor-style or related local predictor.
+- Compute a per-token proxy loss `L_p^{b,n} = d(h_hat_{t,p}^{b,n}, h_t^{b,n})`.
+- Select the predictor with minimum proxy loss for each token: `p*(b,n) = argmin_p L_p^{b,n}`.
+- Apply the corresponding predictor to the cached residuals, assemble the per-token predicted residual map `r_hat_t`, and form the predicted model output `f_hat_theta(x_t, t) = x_t + r_hat_t`.
+- Continue denoising using the predicted output until the next full cache-refresh step.
+state_variables_and_history=Current latent; cached first-layer modulated inputs; cached residuals; family of candidate Taylor predictors with varying order and horizon; per-token selected predictor ids.
+nfe_accounting=The paper leaves the diffusion-step count unchanged but replaces substantial internal-network work with cached feature prediction, which is outside the repo's fixed external-sampler interface.
+portability=incompatible
+repo_transfer_hypothesis=The full token-adaptive mechanism is not portable to `sample.py`, but the paper is still useful as a boundary: adaptive predictor selection is real, yet here we can only transfer tiny state-level residues, not internal token-level probes or feature caches.
+failure_or_reject_boundary=Reject any TAP-like branch that depends on internal transformer activations, token-wise predictor assignment, or layer-level feature caches. Those mechanisms require architecture hooks the repo does not permit.
+citation_followups=TaylorSeer; TeaCache; FORA; FreqCa; ToCa
+status=ready
+
+## Paper Entry
+
+paper_id=etc_2025
+title=ETC: Training-Free Diffusion Models Acceleration with Error-Aware Trend Consistency
+authors=Jiajian Xie; Hubery Yin; Chen Li; Zhou Zhao; Shengyu Zhang
+venue_or_source=arXiv
+year=2025
+url=https://arxiv.org/abs/2510.24129
+pdf_path=literature/pdfs/etc_2510.24129.pdf
+family=step-wise denoising trend smoothing with progressive distribution
+why_relevant=This is the main direct anchor for the new pass because it operates entirely at the level of model outputs across timesteps, not internal features, and its core idea is a simple recursive historical trend estimate that can plausibly be transferred into the late-step predictor logic in `sample.py`.
+core_claim=Short-term residual reuse causes trajectory drift because error-corrected model outputs fluctuate; a recursively smoothed historical trend better captures the long-term denoising direction, and progressively distributing that trend across skipped steps preserves consistency while still accelerating inference.
+assumptions=Model outputs evolve smoothly in time; one may compare model outputs across consecutive timesteps; a small number of initial full denoising steps are available before trend-based approximations begin; a model-specific tolerance threshold can decide how far to extend the approximation window.
+complete_sampling_pseudocode=
+- Inputs: diffusion model `epsilon_theta`; scheduler `phi`; decoder `D`; total sample steps `T`; conditioning `c`; pre-inference count `n`; smoothing factor `alpha`; error threshold `sigma`.
+- Initialize latent `x`, estimated future trend `Delta = None`, approximation step count `k = 0`, and previous model output `P = None`.
+- Warmup stage:
+- For `t = T` down to `T - n`:
+- Run the true model output `epsilon_theta(x, t, c)`.
+- If this is the second evaluated step, initialize the trend with the first output difference.
+- Otherwise update the trend recursively: `Delta <- (1 - alpha) * Delta + alpha * (epsilon_theta(x, t, c) - P)`.
+- Set `P` to the current model output and update the latent with the scheduler.
+- Approximation stage:
+- While `t > 1`:
+- For `j = 1 .. k`, reuse the last true output and distribute the estimated trend progressively:
+- `epsilon'_theta(x, t-j, c) <- P + Delta / k` or more generally the `s / k` scaled trend for the `s`-th skipped step.
+- Update the latent with the scheduler using the approximated output and move forward through the skipped window.
+- After the skipped window, run one fresh true model evaluation at the next step.
+- Compare the fresh output difference against the predicted trend; if the deviation is below threshold `sigma`, expand the future approximation window (`k <- k + 1`), otherwise contract it (`k <- k - 1`, bounded below by zero).
+- Refresh the trend using the new true output: `Delta <- (1 - alpha) * Delta + alpha * (epsilon_theta(x, t, c) - P)`.
+- Continue until the final denoising step, then decode.
+- Offline threshold search:
+- Perturb final latents using model-output differences from each timestep, measure perceptual similarity to original outputs, and identify the transition point from volatile planning to stable refinement as the model-specific tolerance threshold.
+state_variables_and_history=Current latent; previous true model output `P`; recursive trend estimate `Delta`; warmup step count `n`; approximation window size `k`; optional threshold estimated offline from similarity curves.
+nfe_accounting=The paper reduces effective model evaluations by skipping steps, but its central trend estimator itself adds no NFE and only requires storing prior model outputs and the recursive trend state.
+portability=direct
+repo_transfer_hypothesis=The full step-skipping and threshold search machinery is broader than the repo’s fixed-NFE goal, but the trend estimator is directly portable: replace a one-step drift difference on the sensitive late predictor step with a recursively smoothed historical drift trend, keeping the overall NFE and solver structure unchanged.
+failure_or_reject_boundary=Reject any ETC-like branch that changes the official NFE budget, introduces offline threshold search, or relies on multi-step output reuse across whole denoising windows. The in-bounds residue is only the recursive trend estimate itself.
+citation_followups=AdaptiveDiffusion; TeaCache; SADA; MagCache; ruptures trend-inflection analysis
+status=ready
+
+## Paper Entry
+
+paper_id=sada_2025
+title=Stability-guided Adaptive Diffusion Acceleration
+authors=Ting Jiang; Yixiao Wang; Hancheng Ye; Zishan Shao; Jingwei Sun; Jingyang Zhang; Zekai Chen; Jianyi Zhang; Yiran Chen; Hai Li
+venue_or_source=ICML 2025 / PMLR / arXiv
+year=2025
+url=https://arxiv.org/abs/2507.17135
+pdf_path=literature/pdfs/sada_2507.17135.pdf
+family=stability-guided step-wise and token-wise cache-assisted pruning with solver-aware approximations
+why_relevant=This paper is a useful direct follow-up because it explicitly incorporates solver-side gradients into the approximation rule and gives a higher-order backward-step formula that is cleaner than naive residual reuse, even though its full token-wise pruning framework remains out of scope.
+core_claim=Acceleration should be treated as a stability-prediction problem: use solver-aware local curvature information to decide when approximations are safe, and when skipping a step, approximate the next state or clean sample with higher-order Adams-Moulton or interpolation formulas aligned with the underlying ODE solver.
+assumptions=The denoiser exposes either noise or flow velocity predictions; one may compute local trajectory gradients `y_t = dx_t / dt`; token-wise and step-wise sparsity can be changed on the fly; advanced samplers such as DPM-Solver++ or EDM consume clean-sample estimates.
+complete_sampling_pseudocode=
+- Inputs: diffusion or flow-matching model; chosen ODE solver; cached past trajectory states and gradients.
+- At each timestep `t`, compute the current model output and the associated trajectory gradient `y_t = dx_t / dt`.
+- Form a stability criterion from the extrapolation error and the local curvature of the velocity:
+- Build a third-order backward extrapolated state estimate `x_hat_{t-1}` from future-known reverse-time states.
+- Compute the second-order finite difference of the velocity `Delta^(2) y_t`.
+- If `(x_{t-1} - x_hat_{t-1}) dot Delta^(2) y_t < 0`, the trajectory is considered locally stable and eligible for step-wise acceleration.
+- Step-wise approximation path:
+- Reuse the current model output and approximate the next state with a solver-aware Adams-Moulton formula, for example
+- `x_hat_{t-1} = x_t - 5/6 * Delta t * y_t - 5/6 * Delta t * y_{t+1} + 2/3 * Delta t * y_{t+2}`.
+- Convert the approximated state into a clean-sample estimate `x_0^t` compatible with the active solver.
+- In later stable regions, use multistep interpolation on stored `x_0` values to approximate skipped steps.
+- Token-wise path when unstable:
+- Prune only stable tokens, recompute unstable ones, and reconstruct the full feature map from a cache.
+- Continue sampling under the chosen solver.
+state_variables_and_history=Current latent; current and recent solver gradients `y_t`; local curvature estimate `Delta^(2) y_t`; cached clean-sample estimates for interpolation; optional token caches.
+nfe_accounting=The step-wise approximation path itself can preserve the external NFE budget if used as a local formula, but the full paper mainly targets architectural acceleration through skipping or pruning and therefore changes computation in ways broader than the repo allows.
+portability=partial
+repo_transfer_hypothesis=The token-wise pruning is incompatible, but the solver-aware lesson is useful: if we want to improve a late predictor in this repo, higher-order trend or curvature information should enter as a state-level drift estimate, not as another arbitrary scalar blend.
+failure_or_reject_boundary=Reject any SADA-like branch that relies on token masks, internal caches, or dynamic skipping of official model evaluations. The portable residue is only a tiny solver-aware historical trend or multistep state estimate inside the fixed-NFE sampler.
+citation_followups=AdaptiveDiffusion; DeepCache; TeaCache; PF-Diff; Adams-Moulton methods
+status=ready
+
+## Session Takeaway
+
+- `TAP` is a clean architectural reject boundary: token-adaptive predictor selection is real, but it depends on internal layer hooks and cannot be faithfully compressed into a `sample.py`-only sampler.
+- `ETC` gives the strongest direct residue for this repo: the right correction signal may be a recursively smoothed historical denoising trend, not the raw one-step residual that recent local families keep reusing.
+- `SADA` corroborates the same direction from the solver side: when approximations help, they help by respecting the ODE trajectory and using structured historical gradient information rather than ad hoc reuse.
+- The next direct family should therefore keep the exact `e2379ec` paper base and replace the single-step STORK history vector on the `{steps_left=5}` predictor step with a recursively smoothed trend built from recent drift differences.
+
+## Candidate Card
+
+family=localized_trend_consistent_virtual_predictor
+kind=mechanism
+external_anchor=ETC: Training-Free Diffusion Models Acceleration with Error-Aware Trend Consistency (Xie et al., 2025); SADA: Stability-guided Adaptive Diffusion Acceleration (Jiang et al., 2025)
+borrowed_mechanism=replace the raw one-step late predictor trend with a recursively smoothed historical trend, preserving long-horizon direction while damping error-corrected fluctuations
+synthesis_step=from the exact `e2379ec` paper base, keep the single `{steps_left=5}` virtual-predictor placement but introduce a recursive trend state `trend_cur = (1 - alpha) * trend_prev + alpha * (d_cur - prev_d_cur)` (initialized from the first available drift difference) and use that trend instead of `(d_cur - prev_d_cur)` inside the localized virtual predictor; keep the `{4}` midpoint entry step, `{3}` UniPC corrector, and terminal exact-Heun pair unchanged everywhere else
+portability=direct
+base_commit=e2379ec
+active_nf_range=paper-targeted late full-step regime only; NFE 5/9/11/13 should remain in the usual dormant band because the modified branch is still inactive when `num_steps < 12`
+extra_nfe=0
+hypothesis=the current paper winner may still be slightly too sensitive to the most recent drift fluctuation on the approach step; using a recursively smoothed trend should preserve the useful late-direction information while damping the low-NFE softness that keeps appearing when raw history is perturbed
+expected_signature=the proxy frontier should at least match the dormant-band stability of `e2379ec` while improving the late full-step signal; compared with the closed residualized family, the `NFE=5` point should stay tighter to base instead of softening
+ablation=if this shows life, compare the same smoothed-trend construction using `prev_d_prime - prev_d_cur` as the incoming trend increment, so we can separate smoothing from raw-drift history choice
+kill_condition=any clear proxy loss versus `e2379ec`, any low-NFE drift outside the usual dormant band, or any sign that the smoothed trend simply behaves like another closed STORK-history tweak rather than a new family
+
+## Session Addendum
+
+Session date: 2026-03-15
 Working paper base after adaptive-allocation closeout: `e2379ec`
 Reason for new pass: the orthogonal adaptive-allocation family lost cleanly on proxy, so `program.md` requires a fresh 3-paper external literature rotation before another family change.
 Fresh externally discovered anchors for this pass: `S4S` (`arXiv:2502.17423`), `TADA` (`arXiv:2506.21757`), and `A-FloPS` (`arXiv:2509.00036`).
