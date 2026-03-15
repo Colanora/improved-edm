@@ -258,9 +258,9 @@ def research_sampler(
         local_unipc = False
         if prev_d_cur is not None:
             growth_gate = research_alpha_growth_gate(d_cur, prev_d_cur)
-            if bool(step_local_virtual_predictor[i]) and prev_h is not None and prev_d_prime is not None:
+            if bool(step_local_virtual_predictor[i]) and prev_h is not None:
                 predictor_step_ratio = (alpha_flat * h / prev_h).to(dtype=torch.float64)
-                predictor_d = d_cur + predictor_step_ratio.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_prime)
+                predictor_d = d_cur + predictor_step_ratio.view(-1, *([1] * (d_cur.ndim - 1))) * (d_cur - prev_d_cur)
             else:
                 predictor_beta_flat = torch.full_like(alpha_flat, float(step_predictor_extrapolation[i]))
                 predictor_beta = predictor_beta_flat.view(-1, *([1] * (d_cur.ndim - 1)))
